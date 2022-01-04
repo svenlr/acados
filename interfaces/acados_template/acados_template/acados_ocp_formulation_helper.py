@@ -3,7 +3,7 @@ from typing import Union
 import numpy as np
 import casadi
 
-from .acados_ocp import AcadosOcp
+from .acados_ocp import AcadosOcp, AcadosModel
 
 
 def g_lin_constraint(ocp: AcadosOcp, c_row: np.ndarray, d_row: np.ndarray, lower_upper: Union[float, tuple],
@@ -30,7 +30,7 @@ def g_lin_constraint(ocp: AcadosOcp, c_row: np.ndarray, d_row: np.ndarray, lower
         ocp.constraints.C = np.concatenate([ocp.constraints.C, c_row], axis=0)
         ocp.constraints.D = np.concatenate([ocp.constraints.D, d_row], axis=0)
     s_idx = get_nsbu(ocp) + get_nsbx(ocp) + get_nsg(ocp)
-    _constraint_with_penalties(ocp, "g", s_idx, lower_upper, sq_penalty=sq_penalty, lin_penalty=lin_penalty)
+    _add_constraint_bounds(ocp, "g", s_idx, lower_upper, sq_penalty=sq_penalty, lin_penalty=lin_penalty)
 
 
 def end_g_lin_constraint(ocp: AcadosOcp, c_row: np.ndarray, d_row: np.ndarray, lower_upper: Union[float, tuple],
@@ -57,7 +57,7 @@ def end_g_lin_constraint(ocp: AcadosOcp, c_row: np.ndarray, d_row: np.ndarray, l
         ocp.constraints.C_e = np.concatenate([ocp.constraints.C_e, c_row], axis=0)
         ocp.constraints.D_e = np.concatenate([ocp.constraints.D_e, d_row], axis=0)
     s_idx = get_nsbx_e(ocp) + get_nsg_e(ocp)
-    _constraint_with_penalties(ocp, "g_e", s_idx, lower_upper, sq_penalty=sq_penalty, lin_penalty=lin_penalty)
+    _add_constraint_bounds(ocp, "g_e", s_idx, lower_upper, sq_penalty=sq_penalty, lin_penalty=lin_penalty)
 
 
 def h_nl_constraint(ocp, nl_expr, lower_upper: Union[float, tuple],
@@ -76,7 +76,7 @@ def h_nl_constraint(ocp, nl_expr, lower_upper: Union[float, tuple],
     else:
         ocp.model.con_h_expr = casadi.vertcat(ocp.model.con_h_expr, nl_expr)
     s_idx = get_nsbu(ocp) + get_nsbx(ocp) + get_nsg(ocp) + get_nsh(ocp)
-    _constraint_with_penalties(ocp, "h", s_idx, lower_upper, sq_penalty=sq_penalty, lin_penalty=lin_penalty)
+    _add_constraint_bounds(ocp, "h", s_idx, lower_upper, sq_penalty=sq_penalty, lin_penalty=lin_penalty)
 
 
 def end_h_nl_constraint(ocp: AcadosOcp, nl_expr, lower_upper: Union[float, tuple],
@@ -95,7 +95,7 @@ def end_h_nl_constraint(ocp: AcadosOcp, nl_expr, lower_upper: Union[float, tuple
     else:
         ocp.model.con_h_expr_e = casadi.vertcat(ocp.model.con_h_expr_e, nl_expr)
     s_idx = get_nsbx_e(ocp) + get_nsg_e(ocp) + get_nsh_e(ocp)
-    _constraint_with_penalties(ocp, "h_e", s_idx, lower_upper, sq_penalty=sq_penalty, lin_penalty=lin_penalty)
+    _add_constraint_bounds(ocp, "h_e", s_idx, lower_upper, sq_penalty=sq_penalty, lin_penalty=lin_penalty)
 
 
 def x_bound(ocp: AcadosOcp, name: str, lower_upper: Union[float, tuple],
@@ -112,7 +112,7 @@ def x_bound(ocp: AcadosOcp, name: str, lower_upper: Union[float, tuple],
     x_idx = get_symbol_idx(ocp.model.x, name)
     ocp.constraints.idxbx = np.concatenate([ocp.constraints.idxbx, [x_idx]])
     s_idx = get_nsbu(ocp) + get_nsbx(ocp)
-    _constraint_with_penalties(ocp, "bx", s_idx, lower_upper, sq_penalty=sq_penalty, lin_penalty=lin_penalty)
+    _add_constraint_bounds(ocp, "bx", s_idx, lower_upper, sq_penalty=sq_penalty, lin_penalty=lin_penalty)
 
 
 def end_x_bound(ocp: AcadosOcp, name: str, lower_upper: Union[float, tuple],
@@ -129,7 +129,7 @@ def end_x_bound(ocp: AcadosOcp, name: str, lower_upper: Union[float, tuple],
     x_idx = get_symbol_idx(ocp.model.x, name)
     ocp.constraints.idxbx_e = np.concatenate([ocp.constraints.idxbx_e, [x_idx]])
     s_idx = get_nsbx_e(ocp)
-    _constraint_with_penalties(ocp, "bx_e", s_idx, lower_upper, sq_penalty=sq_penalty, lin_penalty=lin_penalty)
+    _add_constraint_bounds(ocp, "bx_e", s_idx, lower_upper, sq_penalty=sq_penalty, lin_penalty=lin_penalty)
 
 
 def u_bound(ocp: AcadosOcp, name: str, lower_upper: Union[float, tuple],
@@ -146,11 +146,11 @@ def u_bound(ocp: AcadosOcp, name: str, lower_upper: Union[float, tuple],
     u_idx = get_symbol_idx(ocp.model.u, name)
     ocp.constraints.idxbu = np.concatenate([ocp.constraints.idxbu, [u_idx]])
     s_idx = get_nsbu(ocp)
-    _constraint_with_penalties(ocp, "bu", s_idx, lower_upper, sq_penalty=sq_penalty, lin_penalty=lin_penalty)
+    _add_constraint_bounds(ocp, "bu", s_idx, lower_upper, sq_penalty=sq_penalty, lin_penalty=lin_penalty)
 
 
-def _constraint_with_penalties(ocp: AcadosOcp, id_: str, slack_offset: int, lower_upper: Union[float, tuple],
-                               sq_penalty: Union[float, tuple] = 0, lin_penalty: Union[float, tuple] = 0):
+def _add_constraint_bounds(ocp: AcadosOcp, id_: str, slack_offset: int, lower_upper: Union[float, tuple],
+                           sq_penalty: Union[float, tuple] = 0, lin_penalty: Union[float, tuple] = 0):
     """
     Utility function to manage the common elements of (soft) constraint creation.
     Generates the lower, upper and slack variables, and optionally the idxXXX selection vector for soft constraints.
@@ -161,21 +161,24 @@ def _constraint_with_penalties(ocp: AcadosOcp, id_: str, slack_offset: int, lowe
     :param sq_penalty: quadratic penalty on the slack variables, either tuple (s_l, s_u) or single value for both
     :param lin_penalty: linear penalty on the slack variables, either tuple (s_l, s_u) or single value for both
     """
+    is_terminal = "_e" in id_
     lower, upper = lower_upper if isinstance(lower_upper, tuple) else (-lower_upper, lower_upper)
     sl_quad, su_quad = sq_penalty if isinstance(sq_penalty, tuple) else (sq_penalty, sq_penalty)
     sl_lin, su_lin = lin_penalty if isinstance(lin_penalty, tuple) else (lin_penalty, lin_penalty)
-    setattr(ocp.constraints, "l" + id_, np.concatenate([getattr(ocp.constraints, "l" + id_), lower]))
-    setattr(ocp.constraints, "u" + id_, np.concatenate([getattr(ocp.constraints, "u" + id_), upper]))
+    setattr(ocp.constraints, "l" + id_, np.concatenate([getattr(ocp.constraints, "l" + id_), [lower]]))
+    setattr(ocp.constraints, "u" + id_, np.concatenate([getattr(ocp.constraints, "u" + id_), [upper]]))
     if sl_quad > 0 or su_quad > 0 or sl_lin > 0 or su_lin > 0:
+        check_slack_dimensions(ocp, path=not is_terminal, terminal=is_terminal)
         constraint_idx = getattr(ocp.constraints, "u" + id_).shape[0] - 1
-        setattr(ocp.constraints, "idxs" + id_, np.concatenate([getattr(ocp.constraints, "idxs" + id_), constraint_idx]))
-        suffix = "_e" if "_e" in id_ else ""
+        setattr(ocp.constraints, "idxs" + id_, np.concatenate([getattr(ocp.constraints, "idxs" + id_), [constraint_idx]]))
+        suffix = "_e" if is_terminal else ""
         iZl, iZu, izl, izu = "Zl" + suffix, "Zu" + suffix, "zl" + suffix, "zu" + suffix
         Zl, Zu, zl, zu = getattr(ocp.cost, iZl), getattr(ocp.cost, iZu), getattr(ocp.cost, izl), getattr(ocp.cost, izu)
-        setattr(ocp.cost, iZl, np.concatenate([Zl[:slack_offset], sl_quad, Zl[slack_offset:]]))
-        setattr(ocp.cost, iZu, np.concatenate([Zu[:slack_offset], su_quad, Zu[slack_offset:]]))
-        setattr(ocp.cost, izl, np.concatenate([zl[:slack_offset], sl_lin, zl[slack_offset:]]))
-        setattr(ocp.cost, izu, np.concatenate([zu[:slack_offset], su_lin, zu[slack_offset:]]))
+        setattr(ocp.cost, iZl, np.concatenate([Zl[:slack_offset], [sl_quad], Zl[slack_offset:]]))
+        setattr(ocp.cost, iZu, np.concatenate([Zu[:slack_offset], [su_quad], Zu[slack_offset:]]))
+        setattr(ocp.cost, izl, np.concatenate([zl[:slack_offset], [sl_lin], zl[slack_offset:]]))
+        setattr(ocp.cost, izu, np.concatenate([zu[:slack_offset], [su_lin], zu[slack_offset:]]))
+        check_slack_dimensions(ocp, path=not is_terminal, terminal=is_terminal)
 
 
 def get_nx(ocp: AcadosOcp):
@@ -233,6 +236,18 @@ def auto_xdot(model_x):
     return xdot
 
 
+def get_state_var(ocp_model: Union[AcadosOcp, AcadosModel], name):
+    if isinstance(ocp_model, AcadosOcp):
+        ocp_model = ocp_model.model
+    return get_symbol(ocp_model.x, name)
+
+
+def get_control_var(ocp_model: Union[AcadosOcp, AcadosModel], name):
+    if isinstance(ocp_model, AcadosOcp):
+        ocp_model = ocp_model.model
+    return get_symbol(ocp_model.u, name)
+
+
 def get_symbol(symbol_vector, name):
     """
         Find a casadi symbol by its name in a vertcat (vertical concatenation) vector of symbols.
@@ -267,25 +282,16 @@ def get_symbol_idx(symbol_vector, name):
     return None
 
 
-def check_path_slack_dimensions(ocp: AcadosOcp):
+def check_slack_dimensions(ocp: AcadosOcp, path=False, terminal=False):
     """
-    For soft path constraints and slack cost vectors, check if their dimensions match.
+    For soft path or terminal constraints and slack cost vectors, check if their dimensions match.
     """
-    error = get_slack_dim_mismatch_error(ocp, path=True)
+    error = get_slack_dim_mismatch_error(ocp, path=path, terminal=terminal)
     if error is not None:
         raise RuntimeError(error)
 
 
-def check_end_slack_dimensions(ocp: AcadosOcp):
-    """
-    For soft terminal constraints and slack cost vectors, check if their dimensions match.
-    """
-    error = get_slack_dim_mismatch_error(ocp, end=True)
-    if error is not None:
-        raise RuntimeError(error)
-
-
-def get_slack_dim_mismatch_error(ocp, path=False, end=False):
+def get_slack_dim_mismatch_error(ocp, path=False, terminal=False):
     """
     Check if any of the slack cost vectors does not have the same dimension as the number of soft constraints.
     If there is a mismatch, return an error string describing the probem
@@ -294,7 +300,7 @@ def get_slack_dim_mismatch_error(ocp, path=False, end=False):
     if path:
         num_slack = get_nsg(ocp) + get_nsh(ocp) + get_nsbx(ocp) + get_nsbu(ocp)
         mismatch = [z_name for z_name in zs if getattr(ocp.cost, z_name).shape[0] != num_slack]
-    if end and len(mismatch) == 0:
+    if terminal and len(mismatch) == 0:
         num_slack = get_nsg_e(ocp) + get_nsh_e(ocp) + get_nsbx_e(ocp)
         mismatch = [z_name + "_e" for z_name in zs if getattr(ocp.cost, z_name + "_e").shape[0] != num_slack]
     if len(mismatch) == 0:
