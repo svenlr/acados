@@ -267,19 +267,34 @@ def get_symbol_idx(symbol_vector, name):
         Find the index of a casadi symbol by its name in a vertcat (vertical concatenation) of symbols.
         If the symbol is a vector instead of a scalar, this method returns the index range of the symbol.
     """
-    num_symbols = symbol_vector.size()[0]
-    for i in range(num_symbols):
+    v_len = symbol_vector.size()[0]
+    for i in range(v_len):
         try:
             if symbol_vector[i].name() == name:
                 return i
         except RuntimeError:
-            for j in range(i, num_symbols):
+            for j in range(i, v_len + 1):
                 try:
                     if symbol_vector[i:j].name() == name:
                         return i, j
                 except RuntimeError:
                     pass
     return None
+
+
+def get_symbols_with_positions(symbol_vector):
+    """
+        Find all symbols in a casadi symbol vector and return a list with tuples (name, i, j) where the symbol is located at symbol_vector[i:j].
+    """
+    symbols = []
+    for i in range(symbol_vector.size()[0]):
+        for j in range(i, symbol_vector.size()[0] + 1):
+            try:
+                name = symbol_vector[i:j].name()
+                symbols.append((name, i, j))
+            except RuntimeError:
+                pass
+    return symbols
 
 
 def check_slack_dimensions(ocp: AcadosOcp, path=False, terminal=False):
