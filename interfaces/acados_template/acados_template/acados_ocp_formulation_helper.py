@@ -312,6 +312,7 @@ def get_slack_dim_mismatch_error(ocp, path=False, terminal=False):
     If there is a mismatch, return an error string describing the probem
     """
     zs = ["Zl", "Zu", "zl", "zu"]
+    mismatch = []
     if path:
         num_slack = get_nsg(ocp) + get_nsh(ocp) + get_nsbx(ocp) + get_nsbu(ocp)
         mismatch = [z_name for z_name in zs if getattr(ocp.cost, z_name).shape[0] != num_slack]
