@@ -7,7 +7,7 @@ from .acados_ocp import AcadosOcp, AcadosModel
 
 
 def g_lin_constraint(ocp: AcadosOcp, c_row: np.ndarray, d_row: np.ndarray, lower_upper: Union[float, tuple],
-                     sq_penalty: Union[float, tuple] = 0, lin_penalty: Union[float, tuple] = 0):
+                     sq_penalty: Union[float, tuple] = 0, lin_penalty: Union[float, tuple] = 0, include_terminal=False):
     """
     Add a path linear constraints with lower and upper bound.
     Generates the lower, upper and slack variables, and optionally the idxXXX selection vector for soft constraints.
@@ -31,6 +31,8 @@ def g_lin_constraint(ocp: AcadosOcp, c_row: np.ndarray, d_row: np.ndarray, lower
         ocp.constraints.D = np.concatenate([ocp.constraints.D, d_row], axis=0)
     s_idx = get_nsbu(ocp) + get_nsbx(ocp) + get_nsg(ocp)
     _add_constraint_bounds(ocp, "g", s_idx, lower_upper, sq_penalty=sq_penalty, lin_penalty=lin_penalty)
+    if include_terminal:
+        end_g_lin_constraint(ocp, c_row, d_row, lower_upper, sq_penalty=sq_penalty, lin_penalty=lin_penalty)
 
 
 def end_g_lin_constraint(ocp: AcadosOcp, c_row: np.ndarray, d_row: np.ndarray, lower_upper: Union[float, tuple],
@@ -61,7 +63,7 @@ def end_g_lin_constraint(ocp: AcadosOcp, c_row: np.ndarray, d_row: np.ndarray, l
 
 
 def h_nl_constraint(ocp, nl_expr, lower_upper: Union[float, tuple],
-                    sq_penalty: Union[float, tuple] = 0, lin_penalty: Union[float, tuple] = 0):
+                    sq_penalty: Union[float, tuple] = 0, lin_penalty: Union[float, tuple] = 0, include_terminal=False):
     """
     Add a path non-linear constraints with lower and upper bound.
     Generates the lower, upper and slack variables, and optionally the idxXXX selection vector for soft constraints.
@@ -77,6 +79,8 @@ def h_nl_constraint(ocp, nl_expr, lower_upper: Union[float, tuple],
         ocp.model.con_h_expr = casadi.vertcat(ocp.model.con_h_expr, nl_expr)
     s_idx = get_nsbu(ocp) + get_nsbx(ocp) + get_nsg(ocp) + get_nsh(ocp)
     _add_constraint_bounds(ocp, "h", s_idx, lower_upper, sq_penalty=sq_penalty, lin_penalty=lin_penalty)
+    if include_terminal:
+        end_h_nl_constraint(ocp, nl_expr, lower_upper, sq_penalty=sq_penalty, lin_penalty=lin_penalty)
 
 
 def end_h_nl_constraint(ocp: AcadosOcp, nl_expr, lower_upper: Union[float, tuple],
@@ -99,7 +103,7 @@ def end_h_nl_constraint(ocp: AcadosOcp, nl_expr, lower_upper: Union[float, tuple
 
 
 def x_bound(ocp: AcadosOcp, name: str, lower_upper: Union[float, tuple],
-            sq_penalty: Union[float, tuple] = 0, lin_penalty: Union[float, tuple] = 0):
+            sq_penalty: Union[float, tuple] = 0, lin_penalty: Union[float, tuple] = 0, include_terminal=False):
     """
     Add path bounds on a state variable.
     Generates the lower, upper and slack variables, and optionally the idxXXX selection vector for soft constraints.
@@ -113,6 +117,8 @@ def x_bound(ocp: AcadosOcp, name: str, lower_upper: Union[float, tuple],
     ocp.constraints.idxbx = np.concatenate([ocp.constraints.idxbx, [x_idx]])
     s_idx = get_nsbu(ocp) + get_nsbx(ocp)
     _add_constraint_bounds(ocp, "bx", s_idx, lower_upper, sq_penalty=sq_penalty, lin_penalty=lin_penalty)
+    if include_terminal:
+        end_x_bound(ocp, name, lower_upper, sq_penalty=sq_penalty, lin_penalty=lin_penalty)
 
 
 def end_x_bound(ocp: AcadosOcp, name: str, lower_upper: Union[float, tuple],
@@ -242,6 +248,12 @@ def get_state_var(ocp_model: Union[AcadosOcp, AcadosModel], name):
     return get_symbol(ocp_model.x, name)
 
 
+def get_param_var(ocp_model: Union[AcadosOcp, AcadosModel], name):
+    if isinstance(ocp_model, AcadosOcp):
+        ocp_model = ocp_model.model
+    return get_symbol(ocp_model.p, name)
+
+
 def get_control_var(ocp_model: Union[AcadosOcp, AcadosModel], name):
     if isinstance(ocp_model, AcadosOcp):
         ocp_model = ocp_model.model
@@ -268,17 +280,14 @@ def get_symbol_idx(symbol_vector, name):
         If the symbol is a vector instead of a scalar, this method returns the index range of the symbol.
     """
     v_len = symbol_vector.size()[0]
+    slice_start = 0
     for i in range(v_len):
-        try:
-            if symbol_vector[i].name() == name:
-                return i
-        except RuntimeError:
-            for j in range(i, v_len + 1):
-                try:
-                    if symbol_vector[i:j].name() == name:
-                        return i, j
-                except RuntimeError:
-                    pass
+        info = symbol_vector[slice_start:i + 1].info()
+        if "slice" not in info:
+            if symbol_vector[slice_start:i + 1].name() == name:
+                return (slice_start, i + 1) if i != slice_start else i
+            else:
+                slice_start = i + 1
     return None
 
 
