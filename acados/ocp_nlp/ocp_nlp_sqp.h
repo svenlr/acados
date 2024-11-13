@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -63,13 +60,15 @@ typedef struct
     double tol_eq;       // exit tolerance on equality constraints
     double tol_ineq;     // exit tolerance on inequality constraints
     double tol_comp;     // exit tolerance on complementarity condition
-    int max_iter;
+    double tol_unbounded; // exit threshold when objective function seems to be unbounded
+    double tol_min_step_norm; // exit tolerance for small step
     int ext_qp_res;      // compute external QP residuals (i.e. at SQP level) at each SQP iteration (for debugging)
+    int log_primal_step_norm; // compute and log the max norm of the primal steps
     int qp_warm_start;   // qp_warm_start in all but the first sqp iterations
     bool warm_start_first_qp; // to set qp_warm_start in first iteration
-    int rti_phase;       // only phase 0 at the moment 
-    int initialize_t_slacks;  // 0-false or 1-true
-
+    bool eval_residual_at_max_iter; // if convergence should be checked after last iterations or only throw max_iter reached
+    double timeout_max_time; // maximum time the solve may require before timeout is triggered. No timeout if 0.
+    ocp_nlp_timeout_heuristic_t timeout_heuristic; // type of heuristic used to predict solve time of next QP
 } ocp_nlp_sqp_opts;
 
 //
@@ -96,33 +95,26 @@ typedef struct
     // nlp memory
     ocp_nlp_memory *nlp_mem;
 
-    double time_qp_sol;
-    double time_qp_solver_call;
-    double time_qp_xcond;
-    double time_lin;
-    double time_reg;
-    double time_tot;
-    double time_glob;
-    double time_sim;
-    double time_sim_la;
-    double time_sim_ad;
-    double time_solution_sensitivities;
+    double alpha;
+    double *primal_step_norm;
 
     // statistics
     double *stat;
     int stat_m;
     int stat_n;
 
-    int status;
-    int sqp_iter;
+    double step_norm;
+    double timeout_estimated_per_iteration_time;
 
 } ocp_nlp_sqp_memory;
 
 //
-acados_size_t ocp_nlp_sqp_memory_calculate_size(void *config, void *dims, void *opts_);
+acados_size_t ocp_nlp_sqp_memory_calculate_size(void *config, void *dims, void *opts_, void *in_);
 //
-void *ocp_nlp_sqp_memory_assign(void *config, void *dims, void *opts_, void *raw_memory);
-
+void *ocp_nlp_sqp_memory_assign(void *config, void *dims, void *opts_, void *in_, void *raw_memory);
+//
+void ocp_nlp_sqp_memory_reset_qp_solver(void *config_, void *dims_, void *nlp_in_, void *nlp_out_,
+    void *opts_, void *mem_, void *work_);
 
 
 /************************************************
@@ -132,19 +124,10 @@ void *ocp_nlp_sqp_memory_assign(void *config, void *dims, void *opts_, void *raw
 typedef struct
 {
     ocp_nlp_workspace *nlp_work;
-
-    // temp QP in & out (to be used as workspace in param sens)
-    ocp_qp_in *tmp_qp_in;
-    ocp_qp_out *tmp_qp_out;
-
-    // qp residuals
-    ocp_qp_res *qp_res;
-    ocp_qp_res_ws *qp_res_ws;
-
 } ocp_nlp_sqp_workspace;
 
 //
-acados_size_t ocp_nlp_sqp_workspace_calculate_size(void *config, void *dims, void *opts_);
+acados_size_t ocp_nlp_sqp_workspace_calculate_size(void *config, void *dims, void *opts_, void *in_);
 
 
 
@@ -160,6 +143,18 @@ void ocp_nlp_sqp_config_initialize_default(void *config_);
 //
 int ocp_nlp_sqp_precompute(void *config_, void *dims_, void *nlp_in_, void *nlp_out_,
                 void *opts_, void *mem_, void *work_);
+//
+void ocp_nlp_sqp_eval_lagr_grad_p(void *config_, void *dims_, void *nlp_in_, void *opts_, void *mem_, void *work_,
+                            const char *field, void *grad_p);
+
+
+void ocp_nlp_sqp_eval_solution_sens_adj_p(void *config_, void *dims_,
+                        void *opts_, void *mem_, void *work_, void *sens_nlp_out,
+                        const char *field, int stage, void *grad_p);
+
+//
+void ocp_nlp_sqp_get(void *config_, void *dims_, void *mem_, const char *field, void *return_value_);
+//
 
 #ifdef __cplusplus
 } /* extern "C" */

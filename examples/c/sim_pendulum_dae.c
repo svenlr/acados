@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -106,6 +103,9 @@ int main()
 /************************************************
 * external functions
 ************************************************/
+    external_function_opts ext_fun_opts;
+    external_function_opts_set_to_default(&ext_fun_opts);
+    ext_fun_opts.external_workspace = true;
 
     // impl_ode_fun
     external_function_param_casadi impl_ode_fun;
@@ -115,7 +115,7 @@ int main()
     impl_ode_fun.casadi_sparsity_out = &pendulum_dae_dyn_impl_ode_fun_sparsity_out;
     impl_ode_fun.casadi_n_in = &pendulum_dae_dyn_impl_ode_fun_n_in;
     impl_ode_fun.casadi_n_out = &pendulum_dae_dyn_impl_ode_fun_n_out;
-    external_function_param_casadi_create(&impl_ode_fun, 0);
+    external_function_param_casadi_create(&impl_ode_fun, 0, &ext_fun_opts);
 
     // impl_ode_fun_jac_x_xdot
     external_function_param_casadi impl_ode_fun_jac_x_xdot;
@@ -125,7 +125,7 @@ int main()
     impl_ode_fun_jac_x_xdot.casadi_sparsity_out = &pendulum_dae_dyn_impl_ode_fun_jac_x_xdot_sparsity_out;
     impl_ode_fun_jac_x_xdot.casadi_n_in = &pendulum_dae_dyn_impl_ode_fun_jac_x_xdot_n_in;
     impl_ode_fun_jac_x_xdot.casadi_n_out = &pendulum_dae_dyn_impl_ode_fun_jac_x_xdot_n_out;
-    external_function_param_casadi_create(&impl_ode_fun_jac_x_xdot, 0);
+    external_function_param_casadi_create(&impl_ode_fun_jac_x_xdot, 0, &ext_fun_opts);
 
     // impl_ode_jac_x_xdot_u
     external_function_param_casadi impl_ode_jac_x_xdot_u;
@@ -135,7 +135,7 @@ int main()
     impl_ode_jac_x_xdot_u.casadi_sparsity_out = &pendulum_dae_dyn_impl_ode_jac_x_xdot_u_sparsity_out;
     impl_ode_jac_x_xdot_u.casadi_n_in = &pendulum_dae_dyn_impl_ode_jac_x_xdot_u_n_in;
     impl_ode_jac_x_xdot_u.casadi_n_out = &pendulum_dae_dyn_impl_ode_jac_x_xdot_u_n_out;
-    external_function_param_casadi_create(&impl_ode_jac_x_xdot_u, 0);
+    external_function_param_casadi_create(&impl_ode_jac_x_xdot_u, 0, &ext_fun_opts);
 
     // impl_ode_jac_x_xdot_u
     external_function_param_casadi impl_ode_fun_jac_x_xdot_u;
@@ -147,7 +147,7 @@ int main()
                             &pendulum_dae_dyn_impl_ode_fun_jac_x_xdot_u_sparsity_out;
     impl_ode_fun_jac_x_xdot_u.casadi_n_in = &pendulum_dae_dyn_impl_ode_fun_jac_x_xdot_u_n_in;
     impl_ode_fun_jac_x_xdot_u.casadi_n_out = &pendulum_dae_dyn_impl_ode_fun_jac_x_xdot_u_n_out;
-    external_function_param_casadi_create(&impl_ode_fun_jac_x_xdot_u, 0);
+    external_function_param_casadi_create(&impl_ode_fun_jac_x_xdot_u, 0, &ext_fun_opts);
 
     // impl_ode_hess
     external_function_param_casadi impl_ode_hess;
@@ -157,7 +157,7 @@ int main()
     impl_ode_hess.casadi_sparsity_out = &pendulum_dae_dyn_impl_ode_hess_sparsity_out;
     impl_ode_hess.casadi_n_in = &pendulum_dae_dyn_impl_ode_hess_n_in;
     impl_ode_hess.casadi_n_out = &pendulum_dae_dyn_impl_ode_hess_n_out;
-    external_function_param_casadi_create(&impl_ode_hess, 0);
+    external_function_param_casadi_create(&impl_ode_hess, 0, &ext_fun_opts);
 
     /************************************************
     * external functions (Generalized Nonlinear Static Feedback (GNSF) model)
@@ -170,7 +170,7 @@ int main()
     phi_fun.casadi_sparsity_out   = &pendulum_dae_dyn_gnsf_phi_fun_sparsity_out;
     phi_fun.casadi_n_in           = &pendulum_dae_dyn_gnsf_phi_fun_n_in;
     phi_fun.casadi_n_out          = &pendulum_dae_dyn_gnsf_phi_fun_n_out;
-    external_function_param_casadi_create(&phi_fun, 0);
+    external_function_param_casadi_create(&phi_fun, 0, &ext_fun_opts);
 
     // phi_fun_jac_y
     external_function_param_casadi phi_fun_jac_y;
@@ -180,7 +180,7 @@ int main()
     phi_fun_jac_y.casadi_sparsity_out   = &pendulum_dae_dyn_gnsf_phi_fun_jac_y_sparsity_out;
     phi_fun_jac_y.casadi_n_in           = &pendulum_dae_dyn_gnsf_phi_fun_jac_y_n_in;
     phi_fun_jac_y.casadi_n_out          = &pendulum_dae_dyn_gnsf_phi_fun_jac_y_n_out;
-    external_function_param_casadi_create(&phi_fun_jac_y, 0);
+    external_function_param_casadi_create(&phi_fun_jac_y, 0, &ext_fun_opts);
 
     // phi_jac_y_uhat
     external_function_param_casadi phi_jac_y_uhat;
@@ -190,7 +190,7 @@ int main()
     phi_jac_y_uhat.casadi_sparsity_out       = &pendulum_dae_dyn_gnsf_phi_jac_y_uhat_sparsity_out;
     phi_jac_y_uhat.casadi_n_in               = &pendulum_dae_dyn_gnsf_phi_jac_y_uhat_n_in;
     phi_jac_y_uhat.casadi_n_out              = &pendulum_dae_dyn_gnsf_phi_jac_y_uhat_n_out;
-    external_function_param_casadi_create(&phi_jac_y_uhat, 0);
+    external_function_param_casadi_create(&phi_jac_y_uhat, 0, &ext_fun_opts);
 
     // f_lo_fun_jac_x1k1uz
     external_function_param_casadi f_lo_fun_jac_x1k1uz;
@@ -200,7 +200,7 @@ int main()
     f_lo_fun_jac_x1k1uz.casadi_sparsity_out   = &pendulum_dae_dyn_gnsf_f_lo_fun_jac_x1k1uz_sparsity_out;
     f_lo_fun_jac_x1k1uz.casadi_n_in           = &pendulum_dae_dyn_gnsf_f_lo_fun_jac_x1k1uz_n_in;
     f_lo_fun_jac_x1k1uz.casadi_n_out          = &pendulum_dae_dyn_gnsf_f_lo_fun_jac_x1k1uz_n_out;
-    external_function_param_casadi_create(&f_lo_fun_jac_x1k1uz, 0);
+    external_function_param_casadi_create(&f_lo_fun_jac_x1k1uz, 0, &ext_fun_opts);
 
     // get_matrices_fun
     external_function_param_casadi get_matrices_fun;
@@ -210,7 +210,7 @@ int main()
     get_matrices_fun.casadi_sparsity_out   = &pendulum_dae_dyn_gnsf_get_matrices_fun_sparsity_out;
     get_matrices_fun.casadi_n_in           = &pendulum_dae_dyn_gnsf_get_matrices_fun_n_in;
     get_matrices_fun.casadi_n_out          = &pendulum_dae_dyn_gnsf_get_matrices_fun_n_out;
-    external_function_param_casadi_create(&get_matrices_fun, 0);
+    external_function_param_casadi_create(&get_matrices_fun, 0, &ext_fun_opts);
 
 
 /* nss: number of sim solver:
@@ -327,7 +327,7 @@ int main()
             in->S_adj[ii] = 0.0;
 
     /* sim solver  */
-        sim_solver *sim_solver = sim_solver_create(config, dims, opts);
+        sim_solver *sim_solver = sim_solver_create(config, dims, opts, in);
         int acados_return;
 
         sim_precompute(sim_solver, in, out);

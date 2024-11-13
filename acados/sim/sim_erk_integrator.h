@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -71,19 +68,19 @@ typedef struct
 
 typedef struct
 {
-	// memory
-	double time_sim;
-	double time_ad;
-	double time_la;
+    // memory
+    double time_sim;
+    double time_ad;
+    double time_la;
+    acados_size_t workspace_size;
 
-	// workspace structs
 } sim_erk_memory;
 
 
 
 typedef struct
 {
-	// workspace mem
+    // workspace mem
     double *rhs_forw_in;  // x + S + p
 
     double *K_traj;         // (stages*nX) or (steps*stages*nX) for adj
@@ -130,6 +127,9 @@ int sim_erk_memory_set(void *config_, void *dims_, void *mem_, const char *field
 
 // workspace
 acados_size_t sim_erk_workspace_calculate_size(void *config, void *dims, void *opts_);
+
+size_t sim_erk_get_external_fun_workspace_requirement(void *config_, void *dims_, void *opts_, void *model_);
+void sim_erk_set_external_fun_workspaces(void *config_, void *dims_, void *opts_, void *model_, void *workspace_);
 
 //
 int sim_erk(void *config, sim_in *in, sim_out *out, void *opts_, void *mem_, void *work_);

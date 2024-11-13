@@ -1,8 +1,5 @@
 %
-% Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-% Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-% Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-% Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+% Copyright (c) The acados authors.
 %
 % This file is part of acados.
 %
@@ -29,10 +26,18 @@
 % CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 % ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.;
-%
 
-%% test of native matlab interface
-clear all
+
+
+% NOTE: `acados` currently supports both an old MATLAB/Octave interface (< v0.4.0)
+% as well as a new interface (>= v0.4.0).
+
+% THIS EXAMPLE still uses the OLD interface. If you are new to `acados` please start
+% with the examples that have been ported to the new interface already.
+% see https://github.com/acados/acados/issues/1196#issuecomment-2311822122)
+
+
+clear all; clc;
 
 model_path = fullfile(pwd,'..','pendulum_on_cart_model');
 addpath(model_path)
@@ -66,7 +71,7 @@ plant_sim_method_num_stages = 3;
 plant_sim_method_num_steps = 3;
 
 %% model dynamics
-model = pendulum_on_cart_model;
+model = pendulum_on_cart_model();
 nx = model.nx;
 nu = model.nu;
 
@@ -85,10 +90,10 @@ ocp_model.set('sym_xdot', model.sym_xdot);
 % % nonlinear-least squares cost
 % ocp_model.set('cost_type', 'nonlinear_ls');
 % ocp_model.set('cost_type_e', 'nonlinear_ls');
-% 
+%
 % ocp_model.set('cost_expr_y', model.cost_expr_y);
 % ocp_model.set('cost_expr_y_e', model.cost_expr_y_e);
-% 
+%
 % W_x = diag([1e2, 1e2, 1e-2, 1e-2]);
 % W_u = 1e-3;
 % W = blkdiag(W_x, W_u);
@@ -97,20 +102,23 @@ ocp_model.set('sym_xdot', model.sym_xdot);
 
 % % external cost -> with detection linear least squares
 % cost
-ocp_model.set('cost_expr_ext_cost', model.expr_ext_cost);
-ocp_model.set('cost_expr_ext_cost_e', model.expr_ext_cost_e);
+ocp_model.set('cost_expr_ext_cost', model.cost_expr_ext_cost);
+ocp_model.set('cost_expr_ext_cost_e', model.cost_expr_ext_cost_e);
 
 
 % dynamics
 ocp_model.set('dyn_type', 'explicit');
-ocp_model.set('dyn_expr_f', model.expr_f_expl);
+ocp_model.set('dyn_expr_f', model.dyn_expr_f_expl);
 
 % constraints
 ocp_model.set('constr_type', 'auto');
-ocp_model.set('constr_expr_h', model.expr_h);
+ocp_model.set('constr_expr_h_0', model.constr_expr_h);
+ocp_model.set('constr_expr_h', model.constr_expr_h);
 U_max = 80;
-ocp_model.set('constr_lh', -U_max); % lower bound on h
-ocp_model.set('constr_uh', U_max);  % upper bound on h
+ocp_model.set('constr_lh_0', -U_max); % lower bound on h
+ocp_model.set('constr_uh_0', U_max);  % upper bound on h
+ocp_model.set('constr_lh', -U_max);
+ocp_model.set('constr_uh', U_max);
 ocp_model.set('constr_x0', xcurrent);
 
 %% acados ocp set opts
@@ -125,10 +133,9 @@ ocp_opts.set('sim_method_num_steps', model_sim_method_num_steps);
 
 ocp_opts.set('qp_solver', qp_solver);
 ocp_opts.set('qp_solver_cond_N', qp_solver_cond_N);
-% ... see ocp_opts.opts_struct to see what other fields can be set
 
 %% create ocp solver
-ocp = acados_ocp(ocp_model, ocp_opts);
+ocp_solver = acados_ocp(ocp_model, ocp_opts);
 
 x_traj_init = zeros(nx, N+1);
 u_traj_init = zeros(nu, N);
@@ -144,7 +151,7 @@ sim_model.set('sym_x', model.sym_x);
 sim_model.set('sym_u', model.sym_u);
 sim_model.set('sym_xdot', model.sym_xdot);
 sim_model.set('dyn_type', 'implicit');
-sim_model.set('dyn_expr_f', model.expr_f_impl);
+sim_model.set('dyn_expr_f', model.dyn_expr_f_impl);
 
 % acados sim opts
 sim_opts = acados_sim_opts();
@@ -152,7 +159,7 @@ sim_opts.set('method', plant_sim_method);
 sim_opts.set('num_stages', plant_sim_method_num_stages);
 sim_opts.set('num_steps', plant_sim_method_num_steps);
 
-sim = acados_sim(sim_model, sim_opts);
+sim_solver = acados_sim(sim_model, sim_opts);
 
 %% Simulation
 N_sim = 100;
@@ -165,24 +172,24 @@ x_sim(:,1) = xcurrent;
 for i=1:N_sim
     % update initial state
     xcurrent = x_sim(:,i);
-    ocp.set('constr_x0', xcurrent);
+    ocp_solver.set('constr_x0', xcurrent);
 
     if i == 1 || i == floor(N_sim/2)
         % solve
-        ocp.solve();
+        ocp_solver.solve();
         % get solution
-        u0 = ocp.get('u', 0);
-        status = ocp.get('status'); % 0 - success
+        u0 = ocp_solver.get('u', 0);
+        status = ocp_solver.get('status'); % 0 - success
         x_lin = xcurrent;
         u_lin = u0;
-        
+
         sens_u = zeros(nx, N);
         % get sensitivities w.r.t. initial state value with index
         field = 'ex'; % equality constraint on states
         stage = 0;
         for index = 0:nx-1
-            ocp.eval_param_sens(field, stage, index);
-            sens_u(index+1,:) = ocp.get('sens_u');
+            ocp_solver.eval_param_sens(field, stage, index);
+            sens_u(index+1,:) = ocp_solver.get('sens_u');
         end
     else
         % use feedback policy
@@ -191,14 +198,14 @@ for i=1:N_sim
     end
 
     % set initial state
-    sim.set('x', xcurrent);
-    sim.set('u', u0);
+    sim_solver.set('x', xcurrent);
+    sim_solver.set('u', u0);
 
     % solve
-    sim.solve();
+    sim_solver.solve();
 
     % get simulated state
-    x_sim(:,i+1) = sim.get('xn');
+    x_sim(:,i+1) = sim_solver.get('xn');
     u_sim(:,i) = u0;
 end
 

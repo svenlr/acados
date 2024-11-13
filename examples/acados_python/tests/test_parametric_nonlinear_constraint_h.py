@@ -1,8 +1,5 @@
 #
-# Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-# Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-# Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-# Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+# Copyright (c) The acados authors.
 #
 # This file is part of acados.
 #
@@ -32,103 +29,136 @@
 #
 
 import sys
-sys.path.insert(0, '../getting_started/common')
+sys.path.insert(0, '../pendulum_on_cart/common')
 
 from acados_template import AcadosOcp, AcadosOcpSolver
 from pendulum_model import export_pendulum_ode_model
 import numpy as np
 import scipy.linalg
 from utils import plot_pendulum
-from casadi import SX
-
-# create ocp object to formulate the OCP
-ocp = AcadosOcp()
-
-# set model
-model = export_pendulum_ode_model()
-ocp.model = model
-
-Tf = 1.0
-nx = model.x.size()[0]
-nu = model.u.size()[0]
-ny = nx + nu
-ny_e = nx
-N = 20
-
-# set dimensions
-ocp.dims.N = N
-
-# set cost
-Q = 2*np.diag([1e3, 1e3, 1e-2, 1e-2])
-R = 2*np.diag([1e-2])
-
-ocp.cost.W_e = Q
-ocp.cost.W = scipy.linalg.block_diag(Q, R)
-
-ocp.cost.cost_type = 'LINEAR_LS'
-ocp.cost.cost_type_e = 'LINEAR_LS'
-
-ocp.cost.Vx = np.zeros((ny, nx))
-ocp.cost.Vx[:nx,:nx] = np.eye(nx)
-
-Vu = np.zeros((ny, nu))
-Vu[4,0] = 1.0
-ocp.cost.Vu = Vu
-
-ocp.cost.Vx_e = np.eye(nx)
-
-ocp.cost.yref = np.zeros((ny, ))
-ocp.cost.yref_e = np.zeros((ny_e, ))
-
-# set constraints
-
-Fmax = 80
-# use equivalent formulation with h constraint
-# ocp.constraints.lbu = np.array([-Fmax])
-# ocp.constraints.ubu = np.array([+Fmax])
-# ocp.constraints.idxbu = np.array([0])
-p = SX.sym('p')
-ocp.model.p = p
-
-ocp.constraints.lh = np.array([-Fmax])
-ocp.constraints.uh = np.array([+Fmax])
-ocp.model.con_h_expr = model.u / p
-
-ocp.parameter_values = np.array([0])
-
-ocp.constraints.x0 = np.array([0.0, np.pi, 0.0, 0.0])
-
-ocp.solver_options.qp_solver = 'PARTIAL_CONDENSING_HPIPM' # FULL_CONDENSING_QPOASES
-ocp.solver_options.hessian_approx = 'EXACT' # GAUSS_NEWTON, EXACT
-ocp.solver_options.regularize_method = 'CONVEXIFY' # GAUSS_NEWTON, EXACT
-ocp.solver_options.integrator_type = 'ERK'
-ocp.solver_options.print_level = 0
-ocp.solver_options.nlp_solver_type = 'SQP' # SQP_RTI, SQP
-
-# set prediction horizon
-ocp.solver_options.tf = Tf
+from casadi import SX, vertcat
 
 
-ocp_solver = AcadosOcpSolver(ocp, json_file = 'acados_ocp.json')
 
-for i in range(N):
-    ocp_solver.set(i, "p", np.array([1.0]))
+def main():
+    ocp = AcadosOcp()
+
+    # set model
+    model = export_pendulum_ode_model()
+    ocp.model = model
+    x = model.x
+    u = model.u
+
+    Tf = 1.0
+    nx = x.rows()
+    nu = u.rows()
+    N = 20
+
+    # set dimensions
+    ocp.solver_options.N_horizon = N
+
+    # set cost
+    Q = 2*np.diag([1e3, 1e3, 1e-2, 1e-2])
+    R = 2*np.diag([1e-2])
+    cost_W = scipy.linalg.block_diag(Q, R)
 
 
-simX = np.ndarray((N+1, nx))
-simU = np.ndarray((N, nu))
+    #
+    n_param = 42
+    p = SX.sym('p', n_param)
+    constraint_quotient = p[0]
+    y_param = p[1:nx+nu+1]
+    ocp.model.p = p
 
-status = ocp_solver.solve()
+    # define cost with parametric reference
+    ocp.cost.cost_type = 'EXTERNAL'
+    ocp.cost.cost_type_e = 'EXTERNAL'
 
-if status != 0:
-    raise Exception('acados returned status {}. Exiting.'.format(status))
+    residual = y_param - vertcat(x, u)
+    ocp.model.cost_expr_ext_cost = residual.T @ cost_W @ residual
+    res_e = y_param[0:nx] - x
+    ocp.model.cost_expr_ext_cost_e = res_e.T @ Q @ res_e
 
-# get solution
-for i in range(N):
-    simX[i,:] = ocp_solver.get(i, "x")
-    simU[i,:] = ocp_solver.get(i, "u")
-simX[N,:] = ocp_solver.get(N, "x")
+    # set constraints
 
-ocp_solver.print_statistics() # encapsulates: stat = ocp_solver.get_stats("statistics")
+    Fmax = 80
+    # use equivalent formulation with h constraint
+    # ocp.constraints.lbu = np.array([-Fmax])
+    # ocp.constraints.ubu = np.array([+Fmax])
+    # ocp.constraints.idxbu = np.array([0])
 
-plot_pendulum(np.linspace(0, Tf, N+1), Fmax, simU, simX, latexify=False)
+    ocp.constraints.lh = np.array([-Fmax])
+    ocp.constraints.uh = np.array([+Fmax])
+    ocp.model.con_h_expr = model.u / constraint_quotient
+
+    ocp.constraints.lh_0 = np.array([-Fmax])
+    ocp.constraints.uh_0 = np.array([+Fmax])
+    ocp.model.con_h_expr_0 = model.u / constraint_quotient
+
+    p_0 = np.zeros(n_param)
+    p_0[0] = 1.0
+    p_0[1] = 1.0
+    ocp.parameter_values = p_0
+
+    ocp.constraints.x0 = np.array([0.0, np.pi, 0.0, 0.0])
+
+    ocp.solver_options.qp_solver = 'PARTIAL_CONDENSING_HPIPM' # FULL_CONDENSING_QPOASES
+    ocp.solver_options.hessian_approx = 'EXACT' # GAUSS_NEWTON, EXACT
+    ocp.solver_options.regularize_method = 'CONVEXIFY' # GAUSS_NEWTON, EXACT
+    ocp.solver_options.integrator_type = 'ERK'
+    ocp.solver_options.print_level = 0
+    ocp.solver_options.nlp_solver_type = 'SQP' # SQP_RTI, SQP
+
+    # set prediction horizon
+    ocp.solver_options.tf = Tf
+
+    # Cython
+    if 0:
+        AcadosOcpSolver.generate(ocp, json_file='acados_ocp.json')
+        AcadosOcpSolver.build(ocp.code_export_directory, with_cython=True)
+        ocp_solver = AcadosOcpSolver.create_cython_solver('acados_ocp.json')
+    else:
+        ocp_solver = AcadosOcpSolver(ocp, json_file = 'acados_ocp.json')
+
+    for i in range(N):
+        ## Two equivalent ways to set parameters
+        if i < 3:
+            # set all parameters
+            ocp_solver.set(i, "p", p_0)
+        else:
+            # set subset of parameters
+            ocp_solver.set_params_sparse(i, np.array(range(n_param)), np.zeros(n_param))
+            ocp_solver.set_params_sparse(i, np.ascontiguousarray([0, 1]), np.array([1.0, 1.0]))
+            p_out = ocp_solver.get(i, "p")
+            assert np.allclose(p_out, p_0)
+
+    solX = np.zeros((N+1, nx))
+    solU = np.zeros((N, nu))
+
+    status = ocp_solver.solve()
+
+    if status != 0:
+        raise Exception(f'acados returned status {status}.')
+
+    # get solution
+    for i in range(N):
+        solX[i,:] = ocp_solver.get(i, "x")
+        solU[i,:] = ocp_solver.get(i, "u")
+    solX[N,:] = ocp_solver.get(N, "x")
+
+    ocp_solver.print_statistics()
+
+
+    if np.any(solU > Fmax) or np.any(solU < -Fmax):
+        raise Exception(f"control bounds should be respected by solution, got u: {solU}")
+
+    if not np.allclose(np.max(solU), Fmax):
+        raise Exception(f"control should go to bounds, got u: {solU}")
+    if not np.allclose(np.min(solU), -Fmax):
+        raise Exception(f"control should go to bounds, got u: {solU}")
+
+    plot_pendulum(np.linspace(0, Tf, N+1), Fmax, solU, solX, latexify=False)
+
+
+if __name__ == "__main__":
+    main()

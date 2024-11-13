@@ -1,9 +1,6 @@
 #!/bin/bash
 #
-# Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-# Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-# Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-# Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+# Copyright (c) The acados authors.
 #
 # This file is part of acados.
 #
@@ -33,13 +30,16 @@
 #
 
 # CASADI_VERSION='3.5.3'; # Latest version with Octave 4.2.2 binaries
-CASADI_VERSION='3.5.5';
-OCTAVE_VERSION='5.2.0';
+CASADI_VERSION='3.6.5';
+OCTAVE_VERSION='7.3.0';
 
 _CASADI_GITHUB_RELEASES="https://github.com/casadi/casadi/releases/download/${CASADI_VERSION}";
 
-CASADI_OCTAVE_URL="${_CASADI_GITHUB_RELEASES}/casadi-linux-octave-${OCTAVE_VERSION}-v${CASADI_VERSION}.tar.gz";
+CASADI_OCTAVE_URL="${_CASADI_GITHUB_RELEASES}/casadi-${CASADI_VERSION}-linux64-octave${OCTAVE_VERSION}.zip";
 
-wget -O casadi-linux-octave.tar.gz "${CASADI_OCTAVE_URL}";
+# URL for Octave new CasADi
+# CASADI_OCTAVE_URL="https://github.com/casadi/casadi/releases/download/nightly-se/casadi-se-linux64-octave7.3.0.zip"
+
+wget -O casadi-linux-octave.zip "${CASADI_OCTAVE_URL}";
 mkdir -p casadi-octave;
-tar -xf casadi-linux-octave.tar.gz -C casadi-octave;
+unzip casadi-linux-octave.zip -d ./casadi-octave;

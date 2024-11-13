@@ -1,8 +1,5 @@
 %
-% Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-% Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-% Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-% Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+% Copyright (c) The acados authors.
 %
 % This file is part of acados.
 %
@@ -29,6 +26,7 @@
 % CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 % ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.;
+
 %
 
 %% test of native matlab interface
@@ -50,7 +48,7 @@ qp_solver_cond_N = 5; % for partial condensing
 sim_method = 'erk'; % erk, irk, irk_gnsf
 
 %% model dynamics
-model = pendulum_on_cart_model;
+model = pendulum_on_cart_model();
 nx = model.nx;
 nu = model.nu;
 
@@ -68,27 +66,26 @@ ocp_model.set('sym_u', model.sym_u);
 ocp_model.set('sym_xdot', model.sym_xdot);
 
 % cost
-ocp_model.set('cost_expr_ext_cost', model.expr_ext_cost);
-ocp_model.set('cost_expr_ext_cost_e', model.expr_ext_cost_e);
+ocp_model.set('cost_expr_ext_cost', model.cost_expr_ext_cost);
+ocp_model.set('cost_expr_ext_cost_e', model.cost_expr_ext_cost_e);
 
 % dynamics
 if (strcmp(sim_method, 'erk'))
     ocp_model.set('dyn_type', 'explicit');
-    ocp_model.set('dyn_expr_f', model.expr_f_expl);
+    ocp_model.set('dyn_expr_f', model.dyn_expr_f_expl);
 else % irk irk_gnsf
     ocp_model.set('dyn_type', 'implicit');
-    ocp_model.set('dyn_expr_f', model.expr_f_impl);
+    ocp_model.set('dyn_expr_f', model.dyn_expr_f_impl);
 end
 
 % constraints
 ocp_model.set('constr_type', 'auto');
-ocp_model.set('constr_expr_h', model.expr_h);
+ocp_model.set('constr_expr_h', model.constr_expr_h);
 U_max = 80;
 ocp_model.set('constr_lh', -U_max); % lower bound on h
 ocp_model.set('constr_uh', U_max);  % upper bound on h
 
 ocp_model.set('constr_x0', x0);
-% ... see ocp_model.model_struct to see what other fields can be set
 
 %% acados ocp set opts
 ocp_opts = acados_ocp_opts();
@@ -98,35 +95,35 @@ ocp_opts.set('sim_method', sim_method);
 ocp_opts.set('qp_solver', qp_solver);
 ocp_opts.set('qp_solver_iter_max', 2000);
 ocp_opts.set('qp_solver_cond_N', qp_solver_cond_N);
-% ... see ocp_opts.opts_struct to see what other fields can be set
+ocp_opts.set('ext_fun_compile_flags', '');
 
 %% create ocp solver
-ocp = acados_ocp(ocp_model, ocp_opts);
+ocp_solver = acados_ocp(ocp_model, ocp_opts);
 
 x_traj_init = zeros(nx, N+1);
 u_traj_init = zeros(nu, N);
 
 %% call ocp solver
 % update initial state
-ocp.set('constr_x0', x0);
+ocp_solver.set('constr_x0', x0);
 
 % set trajectory initialization
-ocp.set('init_x', x_traj_init);
-ocp.set('init_u', u_traj_init);
-ocp.set('init_pi', zeros(nx, N))
+ocp_solver.set('init_x', x_traj_init);
+ocp_solver.set('init_u', u_traj_init);
+ocp_solver.set('init_pi', zeros(nx, N))
 
 % change values for specific shooting node using:
-%   ocp.set('field', value, optional: stage_index)
-ocp.set('constr_lbx', x0, 0)
+%   ocp_solver.set('field', value, optional: stage_index)
+ocp_solver.set('constr_lbx', x0, 0)
 
 % solve
-ocp.solve();
+ocp_solver.solve();
 % get solutionn
-utraj = ocp.get('u');
-xtraj = ocp.get('x');
+utraj = ocp_solver.get('u');
+xtraj = ocp_solver.get('x');
 
-status = ocp.get('status'); % 0 - success
-ocp.print('stat')
+status = ocp_solver.get('status'); % 0 - success
+ocp_solver.print('stat')
 
 if status == 0
     disp('test_ocp_OSQP: success!');

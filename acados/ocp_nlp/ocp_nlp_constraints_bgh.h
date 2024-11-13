@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -75,15 +72,13 @@ typedef struct
     int nbxe; // number of state box constraints which are equality
     int nge;  // number of general linear constraints which are equality
     int nhe;  // number of nonlinear path constraints which are equality
+    int np_global;
 } ocp_nlp_constraints_bgh_dims;
 
 //
 acados_size_t ocp_nlp_constraints_bgh_dims_calculate_size(void *config);
 //
 void *ocp_nlp_constraints_bgh_dims_assign(void *config, void *raw_memory);
-//
-void ocp_nlp_constraints_bgh_dims_initialize(void *config, void *dims, int nx, int nu, int nz, int nbx,
-                                         int nbu, int ng, int nh, int dummy0, int ns);
 //
 void ocp_nlp_constraints_bgh_dims_get(void *config_, void *dims_, const char *field, int* value);
 //
@@ -106,6 +101,8 @@ typedef struct
     external_function_generic *nl_constr_h_fun;  // nonlinear: lh <= h(x,u) <= uh
     external_function_generic *nl_constr_h_fun_jac;  // nonlinear: lh <= h(x,u) <= uh
     external_function_generic *nl_constr_h_fun_jac_hess;  // nonlinear: lh <= h(x,u) <= uh
+    external_function_generic *nl_constr_h_jac_p_hess_xu_p;
+    external_function_generic *nl_constr_h_adj_p;
 } ocp_nlp_constraints_bgh_model;
 
 //
@@ -116,6 +113,9 @@ void *ocp_nlp_constraints_bgh_model_assign(void *config, void *dims, void *raw_m
 int ocp_nlp_constraints_bgh_model_set(void *config_, void *dims_,
                          void *model_, const char *field, void *value);
 
+//
+void ocp_nlp_constraints_bgh_model_get(void *config_, void *dims_,
+                         void *model_, const char *field, void *value);
 
 
 /************************************************
@@ -126,6 +126,7 @@ typedef struct
 {
     int compute_adj;
     int compute_hess;
+    int with_solution_sens_wrt_params;
 } ocp_nlp_constraints_bgh_opts;
 
 //
@@ -149,11 +150,13 @@ typedef struct
 {
     struct blasfeo_dvec fun;
     struct blasfeo_dvec adj;
+    struct blasfeo_dmat *jac_lag_stat_p_global;  // pointer to jacobian of to stationarity condition wrt p_global (nx+nu, np_global)
+    struct blasfeo_dmat *jac_ineq_p_global;  // jacobian of h wrt p_global (nh, np_global)
+    struct blasfeo_dvec constr_eval_no_bounds;
     struct blasfeo_dvec *ux;     // pointer to ux in nlp_out
-    struct blasfeo_dvec *tmp_ux; // pointer to ux in tmp_nlp_out
     struct blasfeo_dvec *lam;    // pointer to lam in nlp_out
-    struct blasfeo_dvec *tmp_lam;// pointer to lam in tmp_nlp_out
     struct blasfeo_dvec *z_alg;  // pointer to z_alg in ocp_nlp memory
+    struct blasfeo_dvec *dmask;  // pointer to dmask in ocp_nlp memory
     struct blasfeo_dmat *DCt;    // pointer to DCt in qp_in
     struct blasfeo_dmat *RSQrq;  // pointer to RSQrq in qp_in
     struct blasfeo_dmat *dzduxt; // pointer to dzduxt in ocp_nlp memory
@@ -173,11 +176,7 @@ struct blasfeo_dvec *ocp_nlp_constraints_bgh_memory_get_adj_ptr(void *memory_);
 //
 void ocp_nlp_constraints_bgh_memory_set_ux_ptr(struct blasfeo_dvec *ux, void *memory_);
 //
-void ocp_nlp_constraints_bgh_memory_set_tmp_ux_ptr(struct blasfeo_dvec *tmp_ux, void *memory_);
-//
 void ocp_nlp_constraints_bgh_memory_set_lam_ptr(struct blasfeo_dvec *lam, void *memory_);
-//
-void ocp_nlp_constraints_bgh_memory_set_tmp_lam_ptr(struct blasfeo_dvec *tmp_lam, void *memory_);
 //
 void ocp_nlp_constraints_bgh_memory_set_DCt_ptr(struct blasfeo_dmat *DCt, void *memory);
 //
@@ -192,6 +191,10 @@ void ocp_nlp_constraints_bgh_memory_set_idxb_ptr(int *idxb, void *memory_);
 void ocp_nlp_constraints_bgh_memory_set_idxs_rev_ptr(int *idxs_rev, void *memory_);
 //
 void ocp_nlp_constraints_bgh_memory_set_idxe_ptr(int *idxe, void *memory_);
+//
+void ocp_nlp_constraints_bgh_memory_set_jac_lag_stat_p_global_ptr(struct blasfeo_dmat *jac_lag_stat_p_global, void *memory_);
+//
+void ocp_nlp_constraints_bgh_memory_set_jac_ineq_p_global_ptr(struct blasfeo_dmat *jac_ineq_p_global, void *memory_);
 
 
 
@@ -201,6 +204,7 @@ void ocp_nlp_constraints_bgh_memory_set_idxe_ptr(int *idxe, void *memory_);
 
 typedef struct
 {
+    struct blasfeo_dmat jac_lag_p_global;
     struct blasfeo_dmat tmp_nv_nv;
     struct blasfeo_dmat tmp_nz_nh;
     struct blasfeo_dmat tmp_nv_nh;
@@ -212,11 +216,15 @@ typedef struct
 
 //
 acados_size_t ocp_nlp_constraints_bgh_workspace_calculate_size(void *config, void *dims, void *opts);
+//
+size_t ocp_nlp_constraints_bgh_get_external_fun_workspace_requirement(void *config_, void *dims_, void *opts_, void *model_);
+//
+void ocp_nlp_constraints_bgh_set_external_fun_workspaces(void *config_, void *dims_, void *opts_, void *model_, void *workspace_);
 
 /* functions */
 
 //
-void ocp_nlp_constraints_bgh_config_initialize_default(void *config);
+void ocp_nlp_constraints_bgh_config_initialize_default(void *config, int stage);
 //
 void ocp_nlp_constraints_bgh_initialize(void *config, void *dims, void *model, void *opts,
                                     void *mem, void *work);
@@ -230,6 +238,12 @@ void ocp_nlp_constraints_bgh_compute_fun(void *config_, void *dims, void *model_
 //
 void ocp_nlp_constraints_bgh_bounds_update(void *config_, void *dims, void *model_,
                                             void *opts_, void *memory_, void *work_);
+//
+void ocp_nlp_constraints_bgh_compute_jac_hess_p(void *config_, void *dims_, void *model_,
+                                            void *opts_, void *memory_, void *work_);
+//
+void ocp_nlp_constraints_bgh_compute_adj_p(void* config_, void *dims_, void *model_,
+                                    void *opts_, void *mem_, void *work_, struct blasfeo_dvec *out);
 
 
 #ifdef __cplusplus

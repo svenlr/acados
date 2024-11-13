@@ -1,8 +1,5 @@
 %
-% Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-% Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-% Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-% Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+% Copyright (c) The acados authors.
 %
 % This file is part of acados.
 %
@@ -29,7 +26,9 @@
 % CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 % ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.;
+
 %
+
 
 classdef acados_ocp_model < handle
 
@@ -54,6 +53,7 @@ classdef acados_ocp_model < handle
             obj.model_struct.cost_type_e = 'auto';
             obj.model_struct.dyn_type = 'implicit';
             obj.model_struct.constr_type = 'bgh';
+            obj.model_struct.constr_type_0 = 'bgh';
             obj.model_struct.constr_type_e = 'bgh';
         end
 
@@ -77,6 +77,8 @@ classdef acados_ocp_model < handle
                     obj.model_struct.sym_z = value;
                 elseif (strcmp(field, 'sym_p'))
                     obj.model_struct.sym_p = value;
+                elseif (strcmp(field, 'sym_p_global'))
+                    obj.model_struct.sym_p_global = value;
                 else
                     disp(['acados_ocp_model: set: wrong field: ', field]);
                     keyboard;
@@ -189,6 +191,14 @@ classdef acados_ocp_model < handle
                     obj.model_struct.cost_zu = value;
                 elseif (strcmp(field, 'cost_zu_e'))
                     obj.model_struct.cost_zu_e = value;
+                elseif (strcmp(field, 'cost_zl_0'))
+                    obj.model_struct.cost_zl_0 = value;
+                elseif (strcmp(field, 'cost_zu_0'))
+                    obj.model_struct.cost_zu_0 = value;
+                elseif (strcmp(field, 'cost_Zl_0'))
+                    obj.model_struct.cost_Zl_0 = value;
+                elseif (strcmp(field, 'cost_Zu_0'))
+                    obj.model_struct.cost_Zu_0 = value;
                 else
                     disp(['acados_ocp_model: set: wrong field: ', field]);
                     keyboard;
@@ -205,8 +215,8 @@ classdef acados_ocp_model < handle
                     obj.model_struct.dyn_expr_phi = value;
                 elseif (strcmp(field, 'dyn_ext_fun_type'))
                     obj.model_struct.dyn_ext_fun_type = value;
-                elseif (strcmp(field, 'dyn_source_discrete'))
-                    obj.model_struct.dyn_source_discrete = value;
+                elseif (strcmp(field, 'dyn_generic_source'))
+                    obj.model_struct.dyn_generic_source = value;
                     obj.model_struct.dyn_ext_fun_type = 'generic';
                 elseif (strcmp(field, 'dyn_disc_fun_jac_hess'))
                     obj.model_struct.dyn_disc_fun_jac_hess = value;
@@ -224,6 +234,8 @@ classdef acados_ocp_model < handle
 
                 if (strcmp(field, 'constr_type'))
                     obj.model_struct.constr_type = value;
+                elseif(strcmp(field, 'constr_type_0'))
+                    obj.model_struct.constr_type_0 = value;
                 elseif (strcmp(field, 'constr_type_e'))
                     obj.model_struct.constr_type_e = value;
 
@@ -239,6 +251,8 @@ classdef acados_ocp_model < handle
                     obj.model_struct.constr_ubx_0 = value;
                 elseif (strcmp(field, 'constr_Jbx_0'))
                     obj.model_struct.constr_Jbx_0 = value;
+                elseif (strcmp(field, 'constr_idxbxe_0'))
+                    obj.model_struct.constr_idxbxe_0 = value;
 
                 elseif (strcmp(field, 'constr_Jbx'))
                     obj.model_struct.constr_Jbx = value;
@@ -278,6 +292,12 @@ classdef acados_ocp_model < handle
                     obj.model_struct.constr_lh = value;
                 elseif (strcmp(field, 'constr_uh'))
                     obj.model_struct.constr_uh = value;
+                elseif (strcmp(field, 'constr_expr_h_0'))
+                    obj.model_struct.constr_expr_h_0 = value;
+                elseif (strcmp(field, 'constr_lh_0'))
+                    obj.model_struct.constr_lh_0 = value;
+                elseif (strcmp(field, 'constr_uh_0'))
+                    obj.model_struct.constr_uh_0 = value;
                 elseif (strcmp(field, 'constr_expr_h_e'))
                     obj.model_struct.constr_expr_h_e = value;
                 elseif (strcmp(field, 'constr_lh_e'))
@@ -322,6 +342,8 @@ classdef acados_ocp_model < handle
     %                obj.model_struct.constr_ush = value;
                 elseif (strcmp(field, 'constr_Jsh_e'))
                     obj.model_struct.constr_Jsh_e = value;
+                elseif (strcmp(field, 'constr_Jsh_0'))
+                    obj.model_struct.constr_Jsh_0 = value;
     %            elseif (strcmp(field, 'constr_lsh_e'))
     %                obj.model_struct.constr_lsh_e = value;
     %            elseif (strcmp(field, 'constr_ush_e'))
@@ -360,6 +382,8 @@ classdef acados_ocp_model < handle
                     obj.model_struct.dim_ng_e = value;
                 elseif (strcmp(field, 'dim_nh'))
                     obj.model_struct.dim_nh = value;
+                elseif (strcmp(field, 'dim_nh_0'))
+                    obj.model_struct.dim_nh_0 = value;
                 elseif (strcmp(field, 'dim_nh_e'))
                     obj.model_struct.dim_nh_e = value;
                 elseif (strcmp(field, 'dim_ns'))
@@ -393,18 +417,18 @@ classdef acados_ocp_model < handle
             else
 
                 if (strcmp(field, 'name'))
-                    obj.model_struct.name = value;                    
+                    obj.model_struct.name = value;
                 elseif (strcmp(field, 'T'))
                     obj.model_struct.T = value;
                 else
                     disp(['acados_ocp_model: set: wrong field: ', field]);
                     keyboard;
                 end
-            end    
+            end
         end
 
     end % methods
-    
+
 
 
 

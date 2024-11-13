@@ -1,8 +1,5 @@
 #
-# Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-# Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-# Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-# Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+# Copyright (c) The acados authors.
 #
 # This file is part of acados.
 #
@@ -58,14 +55,14 @@ sref_N = 3  # reference for final reference progress
 constraint, model, acados_solver = acados_settings(Tf, N, track)
 
 # dimensions
-nx = model.x.size()[0]
-nu = model.u.size()[0]
+nx = model.x.rows()
+nu = model.u.rows()
 ny = nx + nu
 Nsim = int(T * N / Tf)
 
 # initialize data structs
-simX = np.ndarray((Nsim, nx))
-simU = np.ndarray((Nsim, nu))
+simX = np.zeros((Nsim, nx))
+simU = np.zeros((Nsim, nu))
 s0 = model.x0[0]
 tcomp_sum = 0
 tcomp_max = 0
@@ -131,5 +128,5 @@ print("Maximum computation time: {}".format(tcomp_max))
 print("Average speed:{}m/s".format(np.average(simX[:, 3])))
 print("Lap time: {}s".format(Tf * Nsim / N))
 # avoid plotting when running on Travis
-if os.environ.get("ACADOS_ON_TRAVIS") is None:
+if os.environ.get("ACADOS_ON_CI") is None:
     plt.show()

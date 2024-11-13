@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -370,6 +367,11 @@ void ocp_qp_qpdunes_memory_get(void *config_, void *mem_, const char *field, voi
         int *tmp_ptr = value;
         *tmp_ptr = mem->iter;
     }
+    else if (!strcmp(field, "status"))
+    {
+        int *tmp_ptr = value;
+        *tmp_ptr = mem->status;
+    }
     else
     {
         printf("\nerror: ocp_qp_qpdunes_memory_get: field %s not available\n", field);
@@ -378,6 +380,15 @@ void ocp_qp_qpdunes_memory_get(void *config_, void *mem_, const char *field, voi
 
     return;
 
+}
+
+
+void ocp_qp_qpdunes_memory_reset(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *mem_, void *work_)
+{
+    // ocp_qp_in *qp_in = qp_in_;
+    // reset memory
+    printf("acados: reset qpdunes_mem not implemented.\n");
+    exit(1);
 }
 
 
@@ -898,6 +909,7 @@ int ocp_qp_qpdunes(void *config_, ocp_qp_in *in, ocp_qp_out *out, void *opts_, v
         acados_status = ACADOS_QP_FAILURE;
     }
 
+    mem->status = acados_status;
     return acados_status;
 }
 
@@ -909,7 +921,17 @@ void ocp_qp_qpdunes_eval_sens(void *config_, void *qp_in, void *qp_out, void *op
     exit(1);
 }
 
+void ocp_qp_qpdunes_solver_get(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *mem_, const char *field, int stage, void* value, int size1, int size2)
+{
+    printf("\nerror: ocp_qp_osqp_solver_get: not implemented yet\n");
+    exit(1);
+}
 
+
+void ocp_qp_qpdunes_terminate(void *config_, void *mem_, void *work_)
+{
+    return;
+}
 
 void ocp_qp_qpdunes_config_initialize_default(void *config_)
 {
@@ -927,10 +949,12 @@ void ocp_qp_qpdunes_config_initialize_default(void *config_)
     config->memory_assign =
         (void *(*) (void *, void *, void *, void *) ) & ocp_qp_qpdunes_memory_assign;
     config->memory_get = &ocp_qp_qpdunes_memory_get;
+    config->memory_reset = &ocp_qp_qpdunes_memory_reset;
     config->workspace_calculate_size =
         (acados_size_t (*)(void *, void *, void *)) & ocp_qp_qpdunes_workspace_calculate_size;
     config->evaluate = (int (*)(void *, void *, void *, void *, void *, void *)) & ocp_qp_qpdunes;
     config->eval_sens = &ocp_qp_qpdunes_eval_sens;
-
+    config->solver_get = &ocp_qp_qpdunes_solver_get;
+    config->terminate = &ocp_qp_qpdunes_terminate;
     return;
 }

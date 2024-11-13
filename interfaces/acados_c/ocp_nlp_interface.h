@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -57,18 +54,9 @@ typedef enum
 {
     SQP,
     SQP_RTI,
+    DDP,
     INVALID_NLP_SOLVER,
 } ocp_nlp_solver_t;
-
-
-/// Types of the cost function.
-typedef enum
-{
-    LINEAR_LS,
-    NONLINEAR_LS,
-    EXTERNAL,
-    INVALID_COST,
-} ocp_nlp_cost_t;
 
 
 /// Types of the system dynamics, discrete or continuous time.
@@ -106,6 +94,13 @@ typedef enum
     INVALID_REGULARIZE,
 } ocp_nlp_reg_t;
 
+/// Globalization types
+typedef enum
+{
+    FIXED_STEP,
+    MERIT_BACKTRACKING,
+    FUNNEL_L1PEN_LINESEARCH
+} ocp_nlp_globalization_t;
 
 /// Structure to store the configuration of a non-linear program
 typedef struct ocp_nlp_plan_t
@@ -121,6 +116,9 @@ typedef struct ocp_nlp_plan_t
 
     /// Regularization type, defaults to no regularization.
     ocp_nlp_reg_t regularization;
+
+    /// Globalization type, defaults to fixed step.
+    ocp_nlp_globalization_t globalization;
 
     /// Cost type for each stage.
     ocp_nlp_cost_t *nlp_cost;
@@ -141,7 +139,7 @@ typedef struct ocp_nlp_plan_t
 typedef struct ocp_nlp_solver
 {
     ocp_nlp_config *config;
-    void *dims;
+    ocp_nlp_dims *dims;
     void *opts;
     void *mem;
     void *work;
@@ -205,9 +203,25 @@ ACADOS_SYMBOL_EXPORT void ocp_nlp_in_destroy(void *in);
 ACADOS_SYMBOL_EXPORT void ocp_nlp_in_set(ocp_nlp_config *config, ocp_nlp_dims *dims, ocp_nlp_in *in, int stage,
         const char *field, void *value);
 
+
+ACADOS_SYMBOL_EXPORT int ocp_nlp_dynamics_model_set_external_param_fun(ocp_nlp_config *config, ocp_nlp_dims *dims, ocp_nlp_in *in,
+        int stage, const char *field, void *ext_fun);
+
+
+ACADOS_SYMBOL_EXPORT int ocp_nlp_cost_model_set_external_param_fun(ocp_nlp_config *config, ocp_nlp_dims *dims,
+        ocp_nlp_in *in, int stage, const char *field, void *ext_fun);
+
+
+ACADOS_SYMBOL_EXPORT int ocp_nlp_constraints_model_set_external_param_fun(ocp_nlp_config *config, ocp_nlp_dims *dims,
+        ocp_nlp_in *in, int stage, const char *field, void *ext_fun);
+
+
+ACADOS_SYMBOL_EXPORT void ocp_nlp_in_set_params_sparse(ocp_nlp_config *config, ocp_nlp_dims *dims, ocp_nlp_in *in, int stage,
+        int *idx, double *p, int n_update);
+
 ///
-// void ocp_nlp_in_get(ocp_nlp_config *config, ocp_nlp_dims *dims, ocp_nlp_in *in, int stage,
-//         const char *field, void *value);
+ACADOS_SYMBOL_EXPORT void ocp_nlp_in_get(ocp_nlp_config *config, ocp_nlp_dims *dims, ocp_nlp_in *in, int stage,
+        const char *field, void *value);
 
 /// Sets the function pointers to the dynamics functions for the given stage.
 ///
@@ -244,6 +258,10 @@ ACADOS_SYMBOL_EXPORT int ocp_nlp_cost_model_set(ocp_nlp_config *config, ocp_nlp_
 /// \param field The name of the field, either lb, ub (others TBC)
 /// \param value Constraints function or values.
 ACADOS_SYMBOL_EXPORT int ocp_nlp_constraints_model_set(ocp_nlp_config *config, ocp_nlp_dims *dims,
+        ocp_nlp_in *in, int stage, const char *field, void *value);
+
+///
+ACADOS_SYMBOL_EXPORT void ocp_nlp_constraints_model_get(ocp_nlp_config *config, ocp_nlp_dims *dims,
         ocp_nlp_in *in, int stage, const char *field, void *value);
 
 /* out */
@@ -284,8 +302,16 @@ ACADOS_SYMBOL_EXPORT void ocp_nlp_out_get(ocp_nlp_config *config, ocp_nlp_dims *
         int stage, const char *field, void *value);
 
 //
-ACADOS_SYMBOL_EXPORT void ocp_nlp_get_at_stage(ocp_nlp_config *config, ocp_nlp_dims *dims, ocp_nlp_solver *solver,
-        int stage, const char *field, void *value);
+ACADOS_SYMBOL_EXPORT void ocp_nlp_get_at_stage(ocp_nlp_solver *solver, int stage, const char *field, void *value);
+
+ACADOS_SYMBOL_EXPORT void ocp_nlp_get_from_iterate(ocp_nlp_solver *solver, int iter, int stage, const char *field, void *value);
+
+
+ACADOS_SYMBOL_EXPORT void ocp_nlp_get_all(ocp_nlp_solver *solver, ocp_nlp_in *in, ocp_nlp_out *out, const char *field, void *value);
+
+
+ACADOS_SYMBOL_EXPORT void ocp_nlp_set_all(ocp_nlp_solver *solver, ocp_nlp_in *in, ocp_nlp_out *out, const char *field, void *value);
+
 
 // TODO(andrea): remove this once/if the MATLAB interface uses the new setters below?
 ACADOS_SYMBOL_EXPORT int ocp_nlp_dims_get_from_attr(ocp_nlp_config *config, ocp_nlp_dims *dims, ocp_nlp_out *out,
@@ -297,8 +323,10 @@ ACADOS_SYMBOL_EXPORT void ocp_nlp_constraint_dims_get_from_attr(ocp_nlp_config *
 ACADOS_SYMBOL_EXPORT void ocp_nlp_cost_dims_get_from_attr(ocp_nlp_config *config, ocp_nlp_dims *dims, ocp_nlp_out *out,
         int stage, const char *field, int *dims_out);
 
-void ocp_nlp_dynamics_dims_get_from_attr(ocp_nlp_config *config, ocp_nlp_dims *dims, ocp_nlp_out *out,
+ACADOS_SYMBOL_EXPORT void ocp_nlp_qp_dims_get_from_attr(ocp_nlp_config *config, ocp_nlp_dims *dims, ocp_nlp_out *out,
         int stage, const char *field, int *dims_out);
+
+int ocp_nlp_dims_get_total_from_attr(ocp_nlp_config *config, ocp_nlp_dims *dims, const char *field);
 
 /* opts */
 
@@ -328,15 +356,6 @@ ACADOS_SYMBOL_EXPORT void ocp_nlp_solver_opts_set(ocp_nlp_config *config, void *
 ACADOS_SYMBOL_EXPORT void ocp_nlp_solver_opts_set_at_stage(ocp_nlp_config *config, void *opts_, int stage, const char *field, void* value);
 
 
-/// TBC
-/// Updates the options.
-///
-/// \param config The configuration struct.
-/// \param dims The dimension struct.
-/// \param opts_ The options struct.
-ACADOS_SYMBOL_EXPORT void ocp_nlp_solver_opts_update(ocp_nlp_config *config, ocp_nlp_dims *dims, void *opts_);
-
-
 /* solver */
 
 /// Creates an ocp solver.
@@ -345,12 +364,12 @@ ACADOS_SYMBOL_EXPORT void ocp_nlp_solver_opts_update(ocp_nlp_config *config, ocp
 /// \param dims The dimension struct.
 /// \param opts_ The options struct.
 /// \return The solver.
-ACADOS_SYMBOL_EXPORT ocp_nlp_solver *ocp_nlp_solver_create(ocp_nlp_config *config, ocp_nlp_dims *dims, void *opts_);
+ACADOS_SYMBOL_EXPORT ocp_nlp_solver *ocp_nlp_solver_create(ocp_nlp_config *config, ocp_nlp_dims *dims, void *opts_, ocp_nlp_in *nlp_in);
 
 /// Destructor of the solver.
 ///
 /// \param solver The solver struct.
-ACADOS_SYMBOL_EXPORT void ocp_nlp_solver_destroy(void *solver);
+ACADOS_SYMBOL_EXPORT void ocp_nlp_solver_destroy(ocp_nlp_solver *solver);
 
 /// Solves the optimal control problem. Call ocp_nlp_precompute before
 /// calling this functions (TBC).
@@ -359,6 +378,16 @@ ACADOS_SYMBOL_EXPORT void ocp_nlp_solver_destroy(void *solver);
 /// \param nlp_in The inputs struct.
 /// \param nlp_out The output struct.
 ACADOS_SYMBOL_EXPORT int ocp_nlp_solve(ocp_nlp_solver *solver, ocp_nlp_in *nlp_in, ocp_nlp_out *nlp_out);
+
+
+
+/// Resets the memory of the QP solver
+///
+/// \param solver The solver struct.
+/// \param nlp_in The inputs struct.
+/// \param nlp_out The output struct.
+ACADOS_SYMBOL_EXPORT void ocp_nlp_solver_reset_qp_memory(ocp_nlp_solver *solver, ocp_nlp_in *nlp_in, ocp_nlp_out *nlp_out);
+
 
 /// Performs precomputations for the solver. Needs to be called before
 /// ocl_nlp_solve (TBC).
@@ -376,8 +405,14 @@ ACADOS_SYMBOL_EXPORT int ocp_nlp_precompute(ocp_nlp_solver *solver, ocp_nlp_in *
 /// \param nlp_out The output struct.
 ACADOS_SYMBOL_EXPORT void ocp_nlp_eval_cost(ocp_nlp_solver *solver, ocp_nlp_in *nlp_in, ocp_nlp_out *nlp_out);
 
-//
-void ocp_nlp_eval_residuals(ocp_nlp_solver *solver, ocp_nlp_in *nlp_in, ocp_nlp_out *nlp_out);
+
+/// Computes jacobian wrt params in all modules (preparation for solution sensitivities).
+///
+/// \param solver The solver struct.
+/// \param nlp_in The inputs struct.
+/// \param nlp_out The output struct.
+ACADOS_SYMBOL_EXPORT void ocp_nlp_eval_params_jac(ocp_nlp_solver *solver, ocp_nlp_in *nlp_in, ocp_nlp_out *nlp_out);
+
 
 /// Computes the residuals.
 ///
@@ -390,24 +425,26 @@ ACADOS_SYMBOL_EXPORT void ocp_nlp_eval_residuals(ocp_nlp_solver *solver, ocp_nlp
 //
 ACADOS_SYMBOL_EXPORT void ocp_nlp_eval_param_sens(ocp_nlp_solver *solver, char *field, int stage, int index, ocp_nlp_out *sens_nlp_out);
 
+// Computes the gradient of the Lagrange function wrt parameters
+ACADOS_SYMBOL_EXPORT void ocp_nlp_eval_lagrange_grad_p(ocp_nlp_solver *solver, ocp_nlp_in *nlp_in, const char *field, double *out);
+
+
+void ocp_nlp_eval_solution_sens_adj_p(ocp_nlp_solver *solver, ocp_nlp_in *nlp_in, ocp_nlp_out *sens_nlp_out, const char *field, int stage, double *out);
+
 /* get */
-/// \param config The configuration struct.
 /// \param solver The solver struct.
 /// \param field Supports "sqp_iter", "status", "nlp_res", "time_tot", ...
 /// \param return_value_ Pointer to the output memory.
-ACADOS_SYMBOL_EXPORT void ocp_nlp_get(ocp_nlp_config *config, ocp_nlp_solver *solver,
-        const char *field, void *return_value_);
+ACADOS_SYMBOL_EXPORT void ocp_nlp_get(ocp_nlp_solver *solver, const char *field, void *return_value_);
 
 /* set */
 /// Sets the initial guesses for the integrator for the given stage.
 ///
-/// \param config The configuration struct.
 /// \param solver The ocp_nlp_solver struct.
 /// \param stage Stage number.
 /// \param field Supports "z_guess", "xdot_guess" (IRK), "phi_guess" (GNSF-IRK)
 /// \param value The initial guess for the algebraic variables in the integrator (if continuous model is used).
-ACADOS_SYMBOL_EXPORT void ocp_nlp_set(ocp_nlp_config *config, ocp_nlp_solver *solver,
-        int stage, const char *field, void *value);
+ACADOS_SYMBOL_EXPORT void ocp_nlp_set(ocp_nlp_solver *solver, int stage, const char *field, void *value);
 
 
 

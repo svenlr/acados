@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -65,7 +62,7 @@ void make_int_multiple_of(acados_size_t num, acados_size_t *size)
     // avoid changes for num < 2
     if(num>1)
     // round integer size up to next multiple of num;
-	*size = (*size + num - 1) / num * num;
+    *size = (*size + num - 1) / num * num;
 }
 
 

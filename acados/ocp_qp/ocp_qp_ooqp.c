@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -1028,6 +1025,14 @@ void ocp_qp_ooqp_memory_get(void *config_, void *mem_, const char *field, void* 
 }
 
 
+void ocp_qp_ooqp_memory_reset(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *mem_, void *work_)
+{
+    ocp_qp_in *qp_in = qp_in_;
+    // reset memory
+    printf("acados: reset ooqp_mem not implemented.\n");
+    exit(1);
+}
+
 
 /************************************************
  * workspace
@@ -1119,18 +1124,17 @@ int ocp_qp_ooqp(void *config_, ocp_qp_in *qp_in, ocp_qp_out *qp_out, void *opts_
     // TODO(dimitris): implement dense OOQP
     // call sparse OOQP
     acados_tic(&qp_timer);
-    int ooqp_status;
     qpsolvesp(mem->c, mem->nx, mem->irowQ, mem->nnzQ, mem->jcolQ, mem->dQ, mem->xlow, mem->ixlow,
               mem->xupp, mem->ixupp, mem->irowA, mem->nnzA, mem->jcolA, mem->dA, mem->bA, mem->my,
               mem->irowC, mem->nnzC, mem->jcolC, mem->dC, mem->clow, mem->mz, mem->iclow, mem->cupp,
               mem->icupp, work->x, work->gamma, work->phi, work->y, work->z, work->lambda, work->pi,
-              &work->objectiveValue, opts->printLevel, &ooqp_status);
+              &work->objectiveValue, opts->printLevel, &mem->status);
     info->solve_QP_time = acados_toc(&qp_timer);
 
     mem->time_qp_solver_call = info->solve_QP_time;
     mem->iter = -1;
 
-    if (0) print_outputs(mem, work, ooqp_status);
+    if (0) print_outputs(mem, work, mem->status);
     acados_tic(&interface_timer);
     fill_in_qp_out(qp_in, qp_out, work);
     ocp_qp_compute_t(qp_in, qp_out);
@@ -1140,9 +1144,9 @@ int ocp_qp_ooqp(void *config_, ocp_qp_in *qp_in, ocp_qp_out *qp_out, void *opts_
     info->num_iter = -1;
     info->t_computed = 1;
 
-    int acados_status = ooqp_status;
-    if (ooqp_status == SPARSE_SUCCESSFUL_TERMINATION) acados_status = ACADOS_SUCCESS;
-    if (ooqp_status == SPARSE_MAX_ITS_EXCEEDED) acados_status = ACADOS_MAXITER;
+    int acados_status = mem->status;
+    if (mem->status == SPARSE_SUCCESSFUL_TERMINATION) acados_status = ACADOS_SUCCESS;
+    if (mem->status == SPARSE_MAX_ITS_EXCEEDED) acados_status = ACADOS_MAXITER;
     return acados_status;
 }
 
@@ -1155,6 +1159,12 @@ void ocp_qp_ooqp_destroy(void *mem_, void *work)
 }
 
 
+void ocp_qp_ooqp_solver_get(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *mem_, const char *field, int stage, void* value, int size1, int size2)
+{
+    printf("\nerror: ocp_qp_ooqp_solver_get: not implemented yet\n");
+    exit(1);
+}
+
 
 void ocp_qp_ooqp_eval_sens(void *config_, void *qp_in, void *qp_out, void *opts_, void *mem_, void *work_)
 {
@@ -1162,6 +1172,11 @@ void ocp_qp_ooqp_eval_sens(void *config_, void *qp_in, void *qp_out, void *opts_
     exit(1);
 }
 
+
+void ocp_qp_ooqp_terminate(void *config_, void *mem_, void *work_)
+{
+    return;
+}
 
 
 void ocp_qp_ooqp_config_initialize_default(void *config_)
@@ -1184,4 +1199,8 @@ void ocp_qp_ooqp_config_initialize_default(void *config_)
         (size_t (*)(void *, void *, void *)) & ocp_qp_ooqp_workspace_calculate_size;
     config->evaluate = (int (*)(void *, void *, void *, void *, void *, void *)) & ocp_qp_ooqp;
     config->eval_sens = &ocp_qp_ooqp_eval_sens;
+    config->memory_reset = &ocp_qp_ooqp_memory_reset;
+    config->solver_get = &ocp_qp_ooqp_solver_get;
+    config->terminate = &ocp_qp_ooqp_terminate;
+
 }

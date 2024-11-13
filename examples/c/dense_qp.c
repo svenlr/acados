@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -88,6 +85,7 @@ int main() {
 
     dense_qp_solver_plan plan;
 //    plan.qp_solver = DENSE_QP_QPOASES;
+//    plan.qp_solver = DENSE_QP_DAQP;
     plan.qp_solver = DENSE_QP_HPIPM;
 
     qp_solver_config *config = dense_qp_config_create(&plan);

@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -41,8 +38,7 @@
 extern "C" {
 #endif
 
-#ifdef MEASURE_TIMINGS
-#if (defined _WIN32 || defined _WIN64) && !(defined __MINGW32__ || defined __MINGW64__)
+#if (defined _WIN32 || defined _WIN64)
 
 /* Use Windows QueryPerformanceCounter for timing. */
 #include <Windows.h>
@@ -68,6 +64,15 @@ typedef struct acados_timer_
 } acados_timer;
 
 #elif defined(__MABX2__)
+
+#include <brtenv.h>
+
+typedef struct acados_timer_
+{
+    double time;
+} acados_timer;
+
+#elif defined(_DS1104)
 
 #include <brtenv.h>
 
@@ -104,13 +109,6 @@ typedef struct acados_timer_
 #endif  // __STDC_VERSION__ >= 199901L
 
 #endif  // (defined _WIN32 || defined _WIN64)
-
-#else
-
-// Dummy type when timings are off
-typedef real_t acados_timer;
-
-#endif  // MEASURE_TIMINGS
 
 /** A function for measurement of the current time. */
 void acados_tic(acados_timer* t);

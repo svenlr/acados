@@ -1,8 +1,5 @@
 %
-% Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-% Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-% Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-% Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+% Copyright (c) The acados authors.
 %
 % This file is part of acados.
 %
@@ -29,17 +26,25 @@
 % CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 % ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.;
-%
 
-%% test of native matlab interface
-clear all
 
+
+% NOTE: `acados` currently supports both an old MATLAB/Octave interface (< v0.4.0)
+% as well as a new interface (>= v0.4.0).
+
+% THIS EXAMPLE still uses the OLD interface. If you are new to `acados` please start
+% with the examples that have been ported to the new interface already.
+% see https://github.com/acados/acados/issues/1196#issuecomment-2311822122)
+
+
+clear all; clc;
+check_acados_requirements()
 addpath('../linear_mass_spring_model/');
 
 %% arguments
 N = 20;
 tol = 1e-8;
-shooting_nodes = [ linspace(0,10,N+1) ];
+shooting_nodes = linspace(0,10,N+1);
 
 model_name = 'lin_mass';
 
@@ -62,7 +67,7 @@ dyn_type = 'discrete';
 cost_type = 'ext_cost';
 
 %% create model entries
-model = linear_mass_spring_model;
+model = linear_mass_spring_model();
 
 % dims
 T = 10.0; % horizon length time
@@ -72,6 +77,8 @@ nu = model.nu;
 % constraints
 x0 = zeros(nx, 1); x0(1)=2.5; x0(2)=2.5;
 
+lh_0 = -0.5 * ones(nu, 1);
+uh_0 = 0.5 * ones(nu, 1);
 lh = - [ 0.5 * ones(nu, 1); 4.0 * ones(nx, 1)];
 uh = + [ 0.5 * ones(nu, 1); 4.0 * ones(nx, 1)];
 lh_e = -4.0 * ones(nx, 1);
@@ -96,26 +103,32 @@ if isfield(model, 'sym_xdot')
 end
 
 % cost
+ocp_model.set('cost_type_0', cost_type);
 ocp_model.set('cost_type', cost_type);
 ocp_model.set('cost_type_e', cost_type);
+
 % dynamics
 ocp_model.set('dyn_type', 'discrete');
 
 if (casadi_dynamics == 0)
     % Generic dynamics
     ocp_model.set('dyn_ext_fun_type', 'generic');
-    ocp_model.set('dyn_source_discrete', 'generic_disc_dyn.c');
+    ocp_model.set('dyn_generic_source', 'generic_disc_dyn.c');
     ocp_model.set('dyn_disc_fun', 'disc_dyn_fun');
     ocp_model.set('dyn_disc_fun_jac', 'disc_dyn_fun_jac');
     ocp_model.set('dyn_disc_fun_jac_hess', 'disc_dyn_fun_jac_hess'); % only needed for exact hessian
 else
     % dynamics expression
-    ocp_model.set('dyn_expr_phi', model.expr_phi);
+    ocp_model.set('dyn_expr_phi', model.dyn_expr_phi);
 end
 
 if (casadi_cost == 0)
+    % Generic initial cost
+    ocp_model.set('cost_ext_fun_type_0', 'generic');
+    ocp_model.set('cost_source_ext_cost_0', 'generic_ext_cost.c');
+    ocp_model.set('cost_function_ext_cost_0', 'ext_cost');
     % Generic stage cost
-    ocp_model.set('cost_ext_fun_type', 'generic');    
+    ocp_model.set('cost_ext_fun_type', 'generic');
     ocp_model.set('cost_source_ext_cost', 'generic_ext_cost.c');
     ocp_model.set('cost_function_ext_cost', 'ext_cost');
     % Generic terminal cost
@@ -124,16 +137,20 @@ if (casadi_cost == 0)
     ocp_model.set('cost_function_ext_cost_e', 'ext_costN');
 else
     % cost expression
-    ocp_model.set('cost_expr_ext_cost', model.expr_ext_cost);
-    ocp_model.set('cost_expr_ext_cost_e', model.expr_ext_cost_e);
+    ocp_model.set('cost_expr_ext_cost_0', model.cost_expr_ext_cost_0);
+    ocp_model.set('cost_expr_ext_cost', model.cost_expr_ext_cost);
+    ocp_model.set('cost_expr_ext_cost_e', model.cost_expr_ext_cost_e);
 end
 
 % constraints
 ocp_model.set('constr_x0', x0);
-ocp_model.set('constr_expr_h', model.expr_h);
+ocp_model.set('constr_expr_h_0', model.constr_expr_h_0);
+ocp_model.set('constr_lh_0', lh_0);
+ocp_model.set('constr_uh_0', uh_0);
+ocp_model.set('constr_expr_h', model.constr_expr_h);
 ocp_model.set('constr_lh', lh);
 ocp_model.set('constr_uh', uh);
-ocp_model.set('constr_expr_h_e', model.expr_h_e);
+ocp_model.set('constr_expr_h_e', model.constr_expr_h_e);
 ocp_model.set('constr_lh_e', lh_e);
 ocp_model.set('constr_uh_e', uh_e);
 
@@ -164,39 +181,39 @@ ocp_opts.set('sim_method', sim_method);
 
 %% acados ocp
 % create ocp
-ocp = acados_ocp(ocp_model, ocp_opts);
+ocp_solver = acados_ocp(ocp_model, ocp_opts);
 
 % initial state
-ocp.set('constr_x0', x0);
+ocp_solver.set('constr_x0', x0);
 
 % set trajectory initialization
 x_traj_init = zeros(nx, N+1);
 u_traj_init = zeros(nu, N);
-ocp.set('init_x', x_traj_init);
-ocp.set('init_u', u_traj_init);
+ocp_solver.set('init_x', x_traj_init);
+ocp_solver.set('init_u', u_traj_init);
 
 
 % solve
 tic;
-ocp.solve();
+ocp_solver.solve();
 time_ext = toc;
 
 % get solution
-utraj = ocp.get('u');
-xtraj = ocp.get('x');
+utraj = ocp_solver.get('u');
+xtraj = ocp_solver.get('x');
 
 % get info
-status = ocp.get('status');
-sqp_iter = ocp.get('sqp_iter');
-time_tot = ocp.get('time_tot');
-time_lin = ocp.get('time_lin');
-time_reg = ocp.get('time_reg');
-time_qp_sol = ocp.get('time_qp_sol');
+status = ocp_solver.get('status');
+sqp_iter = ocp_solver.get('sqp_iter');
+time_tot = ocp_solver.get('time_tot');
+time_lin = ocp_solver.get('time_lin');
+time_reg = ocp_solver.get('time_reg');
+time_qp_sol = ocp_solver.get('time_qp_sol');
 
 fprintf('\nstatus = %d, sqp_iter = %d, time_ext = %f [ms], time_int = %f [ms] (time_lin = %f [ms], time_qp_sol = %f [ms], time_reg = %f [ms])\n', status, sqp_iter, time_ext*1e3, time_tot*1e3, time_lin*1e3, time_qp_sol*1e3, time_reg*1e3);
 
 % print statistics
-ocp.print('stat')
+ocp_solver.print('stat')
 
 if status~=0
     error('ocp_nlp solver returned status nonzero');
@@ -217,53 +234,3 @@ end
 % plot(1:N, utraj);
 % ylabel('u')
 % xlabel('sample')
-
-%% test templated ocp solver
-disp('testing templated solver');
-ocp.generate_c_code;
-cd c_generated_code/
-
-t_ocp = lin_mass_mex_solver;
-
-% initial state
-t_ocp.set('constr_x0', x0);
-% t_ocp.set('print_level', print_level)
-
-% set trajectory initialization
-t_ocp.set('init_x', x_traj_init);
-t_ocp.set('init_u', u_traj_init);
-
-t_ocp.solve();
-xt_traj = t_ocp.get('x');
-ut_traj = t_ocp.get('u');
-status = t_ocp.get('status');
-
-if status~=0
-    error('test_template_pendulum_ocp: solution of templated MEX failed!');
-else
-    fprintf('\ntest_template_pendulum_ocp: templated MEX success!\n');
-end
-
-error_X_mex_vs_mex_template = max(max(abs(xt_traj - xtraj)))
-error_U_mex_vs_mex_template = max(max(abs(ut_traj - utraj)))
-
-t_ocp.print('stat')
-
-
-tol_check = 1e-6;
-
-if any([error_X_mex_vs_mex_template, error_U_mex_vs_mex_template] > tol_check)
-    error(['test_template_pendulum_exact_hess: solution of templated MEX and original MEX',...
-         ' differ too much. Should be < tol = ' num2str(tol_check)]);
-end
-
-cost_native_mex = ocp.get_cost()
-cost_template_mex = t_ocp.get_cost()
-
-if any(abs(cost_native_mex - cost_template_mex) > tol_check)
-    error(['test_template_pendulum_exact_hess: cost value of templated MEX and original MEX',...
-         ' differ too much. Should be < tol = ' num2str(tol_check)]);
-end
-
-clear all
-cd ..

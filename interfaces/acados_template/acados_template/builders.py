@@ -1,6 +1,41 @@
+# -*- coding: future_fstrings -*-
+#
+# Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
+# Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
+# Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
+# Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+#
+# This file is part of acados.
+#
+# The 2-Clause BSD License
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice,
+# this list of conditions and the following disclaimer.
+#
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+# this list of conditions and the following disclaimer in the documentation
+# and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.;
+#
+
 import os
 import sys
-from subprocess import call
+
+from .utils import verbose_system_call
 
 
 class CMakeBuilder:
@@ -12,6 +47,7 @@ class CMakeBuilder:
         self.build_dir = 'build'
         self._build_dir = None  # private build directory, usually rendered to abspath(build_dir)
         self.generator = None
+        self.host = None
         """Defines the generator, options can be found via `cmake --help` under 'Generator'. Type: string. Linux default 'Unix Makefiles', Windows 'Visual Studio 15 2017 Win64'; default value: `None`."""
         # set something for Windows
         if os.name == 'nt':
@@ -30,7 +66,10 @@ class CMakeBuilder:
         generator_str = ''
         if self.generator is not None:
             generator_str = f' -G"{self.generator}"'
-        return f'cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="{self._source_dir}"{defines_str}{generator_str} -Wdev -S"{self._source_dir}" -B"{self._build_dir}"'
+        host_str = ''
+        if self.host is not None:
+            host_str = f' -A"{self.host}"'
+        return f'cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="{self._source_dir}"{defines_str}{generator_str}{host_str} -Wdev -S"{self._source_dir}" -B"{self._build_dir}"'
 
     # Generate the command string for handling the build.
     def get_cmd2_build(self):
@@ -44,7 +83,7 @@ class CMakeBuilder:
     def get_cmd3_install(self):
         return f'cmake --install "{self._build_dir}"'
 
-    def exec(self, code_export_directory):
+    def exec(self, code_export_directory, verbose=True):
         """
         Execute the compilation using `CMake` with the given settings.
         :param code_export_directory: must be the absolute path to the directory where the code was exported to
@@ -62,17 +101,17 @@ class CMakeBuilder:
             os.chdir(self._build_dir)
             cmd_str = self.get_cmd1_cmake()
             print(f'call("{cmd_str})"')
-            retcode = call(cmd_str, shell=True)
+            retcode = verbose_system_call(cmd_str, verbose, shell=True)
             if retcode != 0:
                 raise RuntimeError(f'CMake command "{cmd_str}" was terminated by signal {retcode}')
             cmd_str = self.get_cmd2_build()
             print(f'call("{cmd_str}")')
-            retcode = call(cmd_str, shell=True)
+            retcode = verbose_system_call(cmd_str, verbose, shell=True)
             if retcode != 0:
                 raise RuntimeError(f'Build command "{cmd_str}" was terminated by signal {retcode}')
             cmd_str = self.get_cmd3_install()
             print(f'call("{cmd_str}")')
-            retcode = call(cmd_str, shell=True)
+            retcode = verbose_system_call(cmd_str, verbose, shell=True)
             if retcode != 0:
                 raise RuntimeError(f'Install command "{cmd_str}" was terminated by signal {retcode}')
         except OSError as e:
@@ -80,3 +119,24 @@ class CMakeBuilder:
         except Exception as e:
             print("Execution failed:", e, file=sys.stderr)
             exit(1)
+
+
+
+def ocp_get_default_cmake_builder() -> CMakeBuilder:
+    """
+    If :py:class:`~acados_template.acados_ocp_solver.AcadosOcpSolver` is used with `CMake` this function returns a good first setting.
+    :return: default :py:class:`~acados_template.builders.CMakeBuilder`
+    """
+    cmake_builder = CMakeBuilder()
+    cmake_builder.options_on = ['BUILD_ACADOS_OCP_SOLVER_LIB']
+    return cmake_builder
+
+
+def sim_get_default_cmake_builder() -> CMakeBuilder:
+    """
+    If :py:class:`~acados_template.acados_sim_solver.AcadosSimSolver` is used with `CMake` this function returns a good first setting.
+    :return: default :py:class:`~acados_template.builders.CMakeBuilder`
+    """
+    cmake_builder = CMakeBuilder()
+    cmake_builder.options_on = ['BUILD_ACADOS_SIM_SOLVER_LIB']
+    return cmake_builder

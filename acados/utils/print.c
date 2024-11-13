@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -186,14 +183,14 @@ void ocp_nlp_dims_print(ocp_nlp_dims *dims)
     int N = dims->N;
 
     //    printf("k\tnx\tnu\tnb\tnbx\tnbu\tng\tns\n");
-    printf("k\tnx\tnu\tni\n");
+    printf("k\tnx\tnu\tni\tns\n");
 
     for (int kk = 0; kk < N + 1; kk++)
     {
         //        printf("%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t\n", kk, dims->nx[kk], dims->nu[kk],
         //        dims->nb[kk],
         //            dims->nbx[kk], dims->nbu[kk], dims->ng[kk], dims->ns[kk]);
-        printf("%d\t%d\t%d\t%d\n", kk, dims->nx[kk], dims->nu[kk], dims->ni[kk]);
+        printf("%d\t%d\t%d\t%d\t%d\n", kk, dims->nx[kk], dims->nu[kk], dims->ni[kk], dims->ns[kk]);
     }
 }
 
@@ -467,10 +464,6 @@ void ocp_nlp_out_print(ocp_nlp_dims *dims, ocp_nlp_out *nlp_out)
         blasfeo_print_tran_dvec(2 * ni[ii], &nlp_out->lam[ii], 0);
     }
 
-// printf("t =\n");
-// for (ii=0; ii<=N; ii++)
-//        blasfeo_print_exp_tran_dvec(2*nb[ii]+2*ng[ii], &nlp_out->t[ii], 0);
-
 #else
 
     for (ii = 0; ii < N + 1; ii++)
@@ -567,6 +560,7 @@ void print_ocp_qp_res(ocp_qp_res *qp_res)
 }
 
 
+#ifndef BLASFEO_EXT_DEP_OFF
 static void int_print_mat_to_file(FILE *file, int row, int col, int *A, int lda)
 {
     int i, j;
@@ -580,7 +574,7 @@ static void int_print_mat_to_file(FILE *file, int row, int col, int *A, int lda)
     }
     fprintf(file, "\n");
 }
-
+#endif
 
 
 void print_ocp_qp_in_to_file(FILE *file, ocp_qp_in *qp_in)

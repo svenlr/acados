@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -43,19 +40,23 @@
 #define {{ model.name | upper }}_NZ     {{ dims.nz }}
 #define {{ model.name | upper }}_NU     {{ dims.nu }}
 #define {{ model.name | upper }}_NP     {{ dims.np }}
+#define {{ model.name | upper }}_NP_GLOBAL     {{ dims.np_global }}
 #define {{ model.name | upper }}_NBX    {{ dims.nbx }}
 #define {{ model.name | upper }}_NBX0   {{ dims.nbx_0 }}
 #define {{ model.name | upper }}_NBU    {{ dims.nbu }}
 #define {{ model.name | upper }}_NSBX   {{ dims.nsbx }}
 #define {{ model.name | upper }}_NSBU   {{ dims.nsbu }}
 #define {{ model.name | upper }}_NSH    {{ dims.nsh }}
+#define {{ model.name | upper }}_NSH0   {{ dims.nsh_0 }}
 #define {{ model.name | upper }}_NSG    {{ dims.nsg }}
 #define {{ model.name | upper }}_NSPHI  {{ dims.nsphi }}
 #define {{ model.name | upper }}_NSHN   {{ dims.nsh_e }}
 #define {{ model.name | upper }}_NSGN   {{ dims.nsg_e }}
 #define {{ model.name | upper }}_NSPHIN {{ dims.nsphi_e }}
+#define {{ model.name | upper }}_NSPHI0 {{ dims.nsphi_0 }}
 #define {{ model.name | upper }}_NSBXN  {{ dims.nsbx_e }}
 #define {{ model.name | upper }}_NS     {{ dims.ns }}
+#define {{ model.name | upper }}_NS0    {{ dims.ns_0 }}
 #define {{ model.name | upper }}_NSN    {{ dims.ns_e }}
 #define {{ model.name | upper }}_NG     {{ dims.ng }}
 #define {{ model.name | upper }}_NBXN   {{ dims.nbx_e }}
@@ -63,16 +64,24 @@
 #define {{ model.name | upper }}_NY0    {{ dims.ny_0 }}
 #define {{ model.name | upper }}_NY     {{ dims.ny }}
 #define {{ model.name | upper }}_NYN    {{ dims.ny_e }}
-#define {{ model.name | upper }}_N      {{ dims.N }}
+#define {{ model.name | upper }}_N      {{ solver_options.N_horizon }}
 #define {{ model.name | upper }}_NH     {{ dims.nh }}
-#define {{ model.name | upper }}_NPHI   {{ dims.nphi }}
 #define {{ model.name | upper }}_NHN    {{ dims.nh_e }}
+#define {{ model.name | upper }}_NH0    {{ dims.nh_0 }}
+#define {{ model.name | upper }}_NPHI0  {{ dims.nphi_0 }}
+#define {{ model.name | upper }}_NPHI   {{ dims.nphi }}
 #define {{ model.name | upper }}_NPHIN  {{ dims.nphi_e }}
 #define {{ model.name | upper }}_NR     {{ dims.nr }}
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+{%- if not solver_options.custom_update_filename %}
+    {%- set custom_update_filename = "" %}
+{% else %}
+    {%- set custom_update_filename = solver_options.custom_update_filename %}
+{%- endif %}
 
 // ** capsule for solver data **
 typedef struct {{ model.name }}_solver_capsule
@@ -91,85 +100,168 @@ typedef struct {{ model.name }}_solver_capsule
     unsigned int nlp_np;
 
     /* external functions */
+{% if dims.np_global > 0 %}
+    external_function_casadi p_global_precompute_fun;
+{%- endif %}
     // dynamics
 {% if solver_options.integrator_type == "ERK" %}
-    external_function_param_casadi *forw_vde_casadi;
-    external_function_param_casadi *expl_ode_fun;
+    external_function_external_param_casadi *expl_vde_forw;
+    external_function_external_param_casadi *expl_ode_fun;
+    external_function_external_param_casadi *expl_vde_adj;
 {% if solver_options.hessian_approx == "EXACT" %}
-    external_function_param_casadi *hess_vde_casadi;
+    external_function_external_param_casadi *expl_ode_hess;
 {%- endif %}
 {% elif solver_options.integrator_type == "IRK" %}
-    external_function_param_casadi *impl_dae_fun;
-    external_function_param_casadi *impl_dae_fun_jac_x_xdot_z;
-    external_function_param_casadi *impl_dae_jac_x_xdot_u_z;
+    external_function_external_param_{{ model.dyn_ext_fun_type }} *impl_dae_fun;
+    external_function_external_param_{{ model.dyn_ext_fun_type }} *impl_dae_fun_jac_x_xdot_z;
+    external_function_external_param_{{ model.dyn_ext_fun_type }} *impl_dae_jac_x_xdot_u_z;
 {% if solver_options.hessian_approx == "EXACT" %}
-    external_function_param_casadi *impl_dae_hess;
+    external_function_external_param_{{ model.dyn_ext_fun_type }} *impl_dae_hess;
 {%- endif %}
 {% elif solver_options.integrator_type == "LIFTED_IRK" %}
-    external_function_param_casadi *impl_dae_fun;
-    external_function_param_casadi *impl_dae_fun_jac_x_xdot_u;
+    external_function_external_param_{{ model.dyn_ext_fun_type }} *impl_dae_fun;
+    external_function_external_param_{{ model.dyn_ext_fun_type }} *impl_dae_fun_jac_x_xdot_u;
 {% elif solver_options.integrator_type == "GNSF" %}
-    external_function_param_casadi *gnsf_phi_fun;
-    external_function_param_casadi *gnsf_phi_fun_jac_y;
-    external_function_param_casadi *gnsf_phi_jac_y_uhat;
-    external_function_param_casadi *gnsf_f_lo_jac_x1_x1dot_u_z;
-    external_function_param_casadi *gnsf_get_matrices_fun;
+    external_function_external_param_casadi *gnsf_phi_fun;
+    external_function_external_param_casadi *gnsf_phi_fun_jac_y;
+    external_function_external_param_casadi *gnsf_phi_jac_y_uhat;
+    external_function_external_param_casadi *gnsf_f_lo_jac_x1_x1dot_u_z;
+    external_function_external_param_casadi *gnsf_get_matrices_fun;
 {% elif solver_options.integrator_type == "DISCRETE" %}
-    external_function_param_{{ model.dyn_ext_fun_type }} *discr_dyn_phi_fun;
-    external_function_param_{{ model.dyn_ext_fun_type }} *discr_dyn_phi_fun_jac_ut_xt;
+    external_function_external_param_{{ model.dyn_ext_fun_type }} *discr_dyn_phi_fun;
+    external_function_external_param_{{ model.dyn_ext_fun_type }} *discr_dyn_phi_fun_jac_ut_xt;
+{% if solver_options.with_solution_sens_wrt_params %}
+    external_function_external_param_{{ model.dyn_ext_fun_type }} *discr_dyn_phi_jac_p_hess_xu_p;
+{%- endif %}
+{% if solver_options.with_value_sens_wrt_params %}
+    external_function_external_param_{{ model.dyn_ext_fun_type }} *discr_dyn_phi_adj_p;
+{%- endif %}
 {%- if solver_options.hessian_approx == "EXACT" %}
-    external_function_param_{{ model.dyn_ext_fun_type }} *discr_dyn_phi_fun_jac_ut_xt_hess;
+    external_function_external_param_{{ model.dyn_ext_fun_type }} *discr_dyn_phi_fun_jac_ut_xt_hess;
 {%- endif %}
 {%- endif %}
 
 
     // cost
 {% if cost.cost_type == "NONLINEAR_LS" %}
-    external_function_param_casadi *cost_y_fun;
-    external_function_param_casadi *cost_y_fun_jac_ut_xt;
-    external_function_param_casadi *cost_y_hess;
+    external_function_external_param_casadi *cost_y_fun;
+    external_function_external_param_casadi *cost_y_fun_jac_ut_xt;
+    {%- if solver_options.hessian_approx == "EXACT" %}
+    external_function_external_param_casadi *cost_y_hess;
+    {%- endif %}
+{% elif cost.cost_type == "CONVEX_OVER_NONLINEAR" %}
+    external_function_external_param_casadi *conl_cost_fun;
+    external_function_external_param_casadi *conl_cost_fun_jac_hess;
 {%- elif cost.cost_type == "EXTERNAL" %}
-    external_function_param_{{ cost.cost_ext_fun_type }} *ext_cost_fun;
-    external_function_param_{{ cost.cost_ext_fun_type }} *ext_cost_fun_jac;
-    external_function_param_{{ cost.cost_ext_fun_type }} *ext_cost_fun_jac_hess;
+    external_function_external_param_{{ cost.cost_ext_fun_type }} *ext_cost_fun;
+    external_function_external_param_{{ cost.cost_ext_fun_type }} *ext_cost_fun_jac;
+    external_function_external_param_{{ cost.cost_ext_fun_type }} *ext_cost_fun_jac_hess;
+{% if solver_options.with_solution_sens_wrt_params %}
+    external_function_external_param_{{ cost.cost_ext_fun_type }} *ext_cost_hess_xu_p;
+{%- endif %}
+{% if solver_options.with_value_sens_wrt_params %}
+    external_function_external_param_{{ cost.cost_ext_fun_type }} *ext_cost_grad_p;
+{%- endif %}
 {% endif %}
 
 {% if cost.cost_type_0 == "NONLINEAR_LS" %}
-    external_function_param_casadi cost_y_0_fun;
-    external_function_param_casadi cost_y_0_fun_jac_ut_xt;
-    external_function_param_casadi cost_y_0_hess;
+    external_function_external_param_casadi cost_y_0_fun;
+    external_function_external_param_casadi cost_y_0_fun_jac_ut_xt;
+    {%- if solver_options.hessian_approx == "EXACT" %}
+    external_function_external_param_casadi cost_y_0_hess;
+    {%- endif %}
+{% elif cost.cost_type_0 == "CONVEX_OVER_NONLINEAR" %}
+    external_function_external_param_casadi conl_cost_0_fun;
+    external_function_external_param_casadi conl_cost_0_fun_jac_hess;
 {% elif cost.cost_type_0 == "EXTERNAL" %}
-    external_function_param_{{ cost.cost_ext_fun_type_0 }} ext_cost_0_fun;
-    external_function_param_{{ cost.cost_ext_fun_type_0 }} ext_cost_0_fun_jac;
-    external_function_param_{{ cost.cost_ext_fun_type_0 }} ext_cost_0_fun_jac_hess;
+    external_function_external_param_{{ cost.cost_ext_fun_type_0 }} ext_cost_0_fun;
+    external_function_external_param_{{ cost.cost_ext_fun_type_0 }} ext_cost_0_fun_jac;
+    external_function_external_param_{{ cost.cost_ext_fun_type_0 }} ext_cost_0_fun_jac_hess;
+{% if solver_options.with_solution_sens_wrt_params %}
+    external_function_external_param_{{ cost.cost_ext_fun_type_0 }} ext_cost_0_hess_xu_p;
+{%- endif %}
+{% if solver_options.with_value_sens_wrt_params %}
+    external_function_external_param_{{ cost.cost_ext_fun_type_0 }} ext_cost_0_grad_p;
+{%- endif %}
 {%- endif %}
 
 {% if cost.cost_type_e == "NONLINEAR_LS" %}
-    external_function_param_casadi cost_y_e_fun;
-    external_function_param_casadi cost_y_e_fun_jac_ut_xt;
-    external_function_param_casadi cost_y_e_hess;
+    external_function_external_param_casadi cost_y_e_fun;
+    external_function_external_param_casadi cost_y_e_fun_jac_ut_xt;
+    {%- if solver_options.hessian_approx == "EXACT" %}
+    external_function_external_param_casadi cost_y_e_hess;
+    {%- endif %}
+{% elif cost.cost_type_e == "CONVEX_OVER_NONLINEAR" %}
+    external_function_external_param_casadi conl_cost_e_fun;
+    external_function_external_param_casadi conl_cost_e_fun_jac_hess;
 {% elif cost.cost_type_e == "EXTERNAL" %}
-    external_function_param_{{ cost.cost_ext_fun_type_e }} ext_cost_e_fun;
-    external_function_param_{{ cost.cost_ext_fun_type_e }} ext_cost_e_fun_jac;
-    external_function_param_{{ cost.cost_ext_fun_type_e }} ext_cost_e_fun_jac_hess;
+    external_function_external_param_{{ cost.cost_ext_fun_type_e }} ext_cost_e_fun;
+    external_function_external_param_{{ cost.cost_ext_fun_type_e }} ext_cost_e_fun_jac;
+    external_function_external_param_{{ cost.cost_ext_fun_type_e }} ext_cost_e_fun_jac_hess;
+{% if solver_options.with_solution_sens_wrt_params %}
+    external_function_external_param_{{ cost.cost_ext_fun_type_e }} ext_cost_e_hess_xu_p;
+{%- endif %}
+{% if solver_options.with_value_sens_wrt_params %}
+    external_function_external_param_{{ cost.cost_ext_fun_type_e }} ext_cost_e_grad_p;
+{%- endif %}
 {%- endif %}
 
     // constraints
 {%- if constraints.constr_type == "BGP" %}
-    external_function_param_casadi *phi_constraint;
+    external_function_external_param_casadi *phi_constraint_fun_jac_hess;
+    external_function_external_param_casadi *phi_constraint_fun;
 {% elif constraints.constr_type == "BGH" and dims.nh > 0 %}
-    external_function_param_casadi *nl_constr_h_fun_jac;
-    external_function_param_casadi *nl_constr_h_fun;
-    external_function_param_casadi *nl_constr_h_fun_jac_hess;
+    external_function_external_param_casadi *nl_constr_h_fun_jac;
+    external_function_external_param_casadi *nl_constr_h_fun;
+{%- if solver_options.hessian_approx == "EXACT" %}
+    external_function_external_param_casadi *nl_constr_h_fun_jac_hess;
+{%- endif %}
+{% if solver_options.with_solution_sens_wrt_params %}
+    external_function_external_param_casadi *nl_constr_h_jac_p_hess_xu_p;
+{%- endif %}
+{% if solver_options.with_value_sens_wrt_params %}
+    external_function_external_param_casadi *nl_constr_h_adj_p;
+{%- endif %}
+{%- endif %}
+
+
+{% if constraints.constr_type_0 == "BGP" %}
+    external_function_external_param_casadi phi_0_constraint_fun_jac_hess;
+    external_function_external_param_casadi phi_0_constraint_fun;
+{% elif constraints.constr_type_0 == "BGH" and dims.nh_0 > 0 %}
+    external_function_external_param_casadi nl_constr_h_0_fun_jac;
+    external_function_external_param_casadi nl_constr_h_0_fun;
+{%- if solver_options.hessian_approx == "EXACT" %}
+    external_function_external_param_casadi nl_constr_h_0_fun_jac_hess;
+{%- endif %}
+{% if solver_options.with_solution_sens_wrt_params %}
+    external_function_external_param_casadi nl_constr_h_0_jac_p_hess_xu_p;
+{%- endif %}
+{% if solver_options.with_value_sens_wrt_params %}
+    external_function_external_param_casadi nl_constr_h_0_adj_p;
+{%- endif %}
 {%- endif %}
 
 
 {% if constraints.constr_type_e == "BGP" %}
-    external_function_param_casadi phi_e_constraint;
+    external_function_external_param_casadi phi_e_constraint_fun_jac_hess;
+    external_function_external_param_casadi phi_e_constraint_fun;
 {% elif constraints.constr_type_e == "BGH" and dims.nh_e > 0 %}
-    external_function_param_casadi nl_constr_h_e_fun_jac;
-    external_function_param_casadi nl_constr_h_e_fun;
-    external_function_param_casadi nl_constr_h_e_fun_jac_hess;
+    external_function_external_param_casadi nl_constr_h_e_fun_jac;
+    external_function_external_param_casadi nl_constr_h_e_fun;
+{%- if solver_options.hessian_approx == "EXACT" %}
+    external_function_external_param_casadi nl_constr_h_e_fun_jac_hess;
+{%- endif %}
+{% if solver_options.with_solution_sens_wrt_params %}
+    external_function_external_param_casadi nl_constr_h_e_jac_p_hess_xu_p;
+{%- endif %}
+{% if solver_options.with_value_sens_wrt_params %}
+    external_function_external_param_casadi nl_constr_h_e_adj_p;
+{%- endif %}
+{%- endif %}
+
+{%- if custom_update_filename != "" %}
+    void * custom_update_memory;
 {%- endif %}
 
 } {{ model.name }}_solver_capsule;
@@ -178,6 +270,9 @@ ACADOS_SYMBOL_EXPORT {{ model.name }}_solver_capsule * {{ model.name }}_acados_c
 ACADOS_SYMBOL_EXPORT int {{ model.name }}_acados_free_capsule({{ model.name }}_solver_capsule *capsule);
 
 ACADOS_SYMBOL_EXPORT int {{ model.name }}_acados_create({{ model.name }}_solver_capsule * capsule);
+
+ACADOS_SYMBOL_EXPORT int {{ model.name }}_acados_reset({{ model.name }}_solver_capsule* capsule, int reset_qp_solver_mem);
+
 /**
  * Generic version of {{ model.name }}_acados_create which allows to use a different number of shooting intervals than
  * the number used for code generation. If new_time_steps=NULL and n_time_steps matches the number used for code
@@ -194,10 +289,18 @@ ACADOS_SYMBOL_EXPORT int {{ model.name }}_acados_update_time_steps({{ model.name
  */
 ACADOS_SYMBOL_EXPORT int {{ model.name }}_acados_update_qp_solver_cond_N({{ model.name }}_solver_capsule * capsule, int qp_solver_cond_N);
 ACADOS_SYMBOL_EXPORT int {{ model.name }}_acados_update_params({{ model.name }}_solver_capsule * capsule, int stage, double *value, int np);
+ACADOS_SYMBOL_EXPORT int {{ model.name }}_acados_update_params_sparse({{ model.name }}_solver_capsule * capsule, int stage, int *idx, double *p, int n_update);
+ACADOS_SYMBOL_EXPORT int {{ name }}_acados_set_p_global_and_precompute_dependencies({{ name }}_solver_capsule* capsule, double* data, int data_len);
+
 ACADOS_SYMBOL_EXPORT int {{ model.name }}_acados_solve({{ model.name }}_solver_capsule * capsule);
+ACADOS_SYMBOL_EXPORT void {{ model.name }}_acados_batch_solve({{ model.name }}_solver_capsule ** capsules, int N_batch);
+ACADOS_SYMBOL_EXPORT void {{ model.name }}_acados_batch_set_flat({{ model.name }}_solver_capsule ** capsules, const char *field, void *value, int N_data, int N_batch);
+
 ACADOS_SYMBOL_EXPORT int {{ model.name }}_acados_free({{ model.name }}_solver_capsule * capsule);
 ACADOS_SYMBOL_EXPORT void {{ model.name }}_acados_print_stats({{ model.name }}_solver_capsule * capsule);
-                     
+ACADOS_SYMBOL_EXPORT int {{ model.name }}_acados_custom_update({{ model.name }}_solver_capsule* capsule, double* data, int data_len);
+
+
 ACADOS_SYMBOL_EXPORT ocp_nlp_in *{{ model.name }}_acados_get_nlp_in({{ model.name }}_solver_capsule * capsule);
 ACADOS_SYMBOL_EXPORT ocp_nlp_out *{{ model.name }}_acados_get_nlp_out({{ model.name }}_solver_capsule * capsule);
 ACADOS_SYMBOL_EXPORT ocp_nlp_out *{{ model.name }}_acados_get_sens_out({{ model.name }}_solver_capsule * capsule);

@@ -1,8 +1,5 @@
 %
-% Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-% Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-% Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-% Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+% Copyright (c) The acados authors.
 %
 % This file is part of acados.
 %
@@ -29,6 +26,7 @@
 % CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 % ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.;
+
 %
 
 function [ model ] = pendulum_dae_model()
@@ -40,12 +38,7 @@ function [ model ] = pendulum_dae_model()
     
     %% CasADi
     import casadi.*
-    casadi_version = CasadiMeta.version();
-    if ( strcmp(casadi_version(1:3),'3.4') || strcmp(casadi_version(1:3),'3.5')) % require casadi 3.4.x
-        casadi_opts = struct('mex', false, 'casadi_int', 'int', 'casadi_real', 'double');
-    else % old casadi versions
-        error('Please provide CasADi version 3.4 or 3.5 to ensure compatibility with acados')
-    end
+
     model_name_prefix = 'pendulum_dae';
     
     %% Parameters (taken from Rien Quirynen's Master Thesis)

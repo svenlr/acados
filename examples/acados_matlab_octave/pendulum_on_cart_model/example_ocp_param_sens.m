@@ -1,8 +1,5 @@
 %
-% Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-% Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-% Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-% Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+% Copyright (c) The acados authors.
 %
 % This file is part of acados.
 %
@@ -29,10 +26,17 @@
 % CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 % ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.;
+
 %
 
-%% test of native matlab interface
-clear all
+% NOTE: `acados` currently supports both an old MATLAB/Octave interface (< v0.4.0)
+% as well as a new interface (>= v0.4.0).
+
+% THIS EXAMPLE still uses the OLD interface. If you are new to `acados` please start
+% with the examples that have been ported to the new interface already.
+% see https://github.com/acados/acados/issues/1196#issuecomment-2311822122)
+
+clear all; clc;
 
 % check that env.sh has been run
 env_run = getenv('ENV_RUN');
@@ -42,7 +46,6 @@ end
 
 %% arguments
 compile_interface = 'auto'; %'auto';
-codgen_model = 'true';
 gnsf_detect_struct = 'true';
 
 % discretization
@@ -84,7 +87,7 @@ model_name = 'ocp_pendulum';
 
 
 %% create model entries
-model = pendulum_on_cart_model;
+model = pendulum_on_cart_model();
 
 % dims
 nx = model.nx;
@@ -167,15 +170,18 @@ ocp_model.set('cost_type_e', cost_type);
 % dynamics
 if (strcmp(sim_method, 'erk'))
     ocp_model.set('dyn_type', 'explicit');
-    ocp_model.set('dyn_expr_f', model.expr_f_expl);
+    ocp_model.set('dyn_expr_f', model.dyn_expr_f_expl);
 else % irk irk_gnsf
     ocp_model.set('dyn_type', 'implicit');
-    ocp_model.set('dyn_expr_f', model.expr_f_impl);
+    ocp_model.set('dyn_expr_f', model.dyn_expr_f_impl);
 end
 % constraints
 ocp_model.set('constr_x0', x0);
 if (nh>0)
-    ocp_model.set('constr_expr_h', model.expr_h);
+    ocp_model.set('constr_expr_h_0', model.constr_expr_h);
+    ocp_model.set('constr_lh_0', lbu);
+    ocp_model.set('constr_uh_0', ubu);
+    ocp_model.set('constr_expr_h', model.constr_expr_h);
     ocp_model.set('constr_lh', lbu);
     ocp_model.set('constr_uh', ubu);
 %    ocp_model.set('constr_expr_h_e', model.expr_h_e);
@@ -189,14 +195,10 @@ else
     ocp_model.set('constr_lbu', lbu);
     ocp_model.set('constr_ubu', ubu);
 end
-% disp('ocp_model.model_struct')
-% disp(ocp_model.model_struct)
-
 
 %% acados ocp opts
 ocp_opts = acados_ocp_opts();
 ocp_opts.set('compile_interface', compile_interface);
-ocp_opts.set('codgen_model', codgen_model);
 ocp_opts.set('param_scheme_N', N);
 ocp_opts.set('nlp_solver', nlp_solver);
 ocp_opts.set('nlp_solver_exact_hessian', nlp_solver_exact_hessian);
@@ -224,19 +226,9 @@ if (strcmp(sim_method, 'irk_gnsf'))
     ocp_opts.set('gnsf_detect_struct', gnsf_detect_struct);
 end
 
-% disp('ocp_opts');
-% disp(ocp_opts.opts_struct);
-
-
 %% acados ocp
 % create ocp
-ocp = acados_ocp(ocp_model, ocp_opts);
-% ocp
-% disp('ocp.C_ocp');
-% disp(ocp.C_ocp);
-% disp('ocp.C_ocp_ext_fun');
-% disp(ocp.C_ocp_ext_fun);
-%ocp.model_struct
+ocp_solver = acados_ocp(ocp_model, ocp_opts);
 
 % set trajectory initialization
 %x_traj_init = zeros(nx, N+1);
@@ -246,30 +238,30 @@ x_traj_init = [linspace(0, 0, N+1); linspace(pi, 0, N+1); linspace(0, 0, N+1); l
 u_traj_init = zeros(nu, N);
 
 % if not set, the trajectory is initialized with the previous solution
-ocp.set('init_x', x_traj_init);
-ocp.set('init_u', u_traj_init);
+ocp_solver.set('init_x', x_traj_init);
+ocp_solver.set('init_u', u_traj_init);
 
 % solve ocp
 tic;
-ocp.solve();
+ocp_solver.solve();
 time_ext = toc;
 
 % get solution
-u = ocp.get('u');
-x = ocp.get('x');
+u = ocp_solver.get('u');
+x = ocp_solver.get('x');
 
 %% evaluation
-status = ocp.get('status');
-sqp_iter = ocp.get('sqp_iter');
-time_tot = ocp.get('time_tot');
-time_lin = ocp.get('time_lin');
-time_reg = ocp.get('time_reg');
-time_qp_sol = ocp.get('time_qp_sol');
+status = ocp_solver.get('status');
+sqp_iter = ocp_solver.get('sqp_iter');
+time_tot = ocp_solver.get('time_tot');
+time_lin = ocp_solver.get('time_lin');
+time_reg = ocp_solver.get('time_reg');
+time_qp_sol = ocp_solver.get('time_qp_sol');
 
 fprintf('\nstatus = %d, sqp_iter = %d, time_ext = %f [ms], time_int = %f [ms] (time_lin = %f [ms], time_qp_sol = %f [ms], time_reg = %f [ms])\n',...
     status, sqp_iter, time_ext*1e3, time_tot*1e3, time_lin*1e3, time_qp_sol*1e3, time_reg*1e3);
 
-ocp.print('stat');
+ocp_solver.print('stat');
 
 
 %% figures
@@ -293,7 +285,7 @@ if 1
 end
 
 % plot residuals over iteraions
-stat = ocp.get('stat');
+stat = ocp_solver.get('stat');
 if 0 && (strcmp(nlp_solver, 'sqp'))
     figure;
      plot([0: size(stat,1)-1], log10(stat(:,2)), 'r-x');
@@ -325,10 +317,10 @@ if 1
     field = 'ex'; % equality constraint on states
     stage = 0;
     index = 1;
-    ocp.eval_param_sens(field, stage, index);
+    ocp_solver.eval_param_sens(field, stage, index);
 
-    sens_u = ocp.get('sens_u');
-    sens_x = ocp.get('sens_x');
+    sens_u = ocp_solver.get('sens_u');
+    sens_x = ocp_solver.get('sens_x');
 
     % plot sensitivity
     figure
@@ -364,14 +356,14 @@ end
 sens_u = zeros(nx, N);
 % get sensitivities w.r.t. initial state value with index
 for index = 0:nx-1
-    ocp.eval_param_sens(field, stage, index);
-    sens_u(index+1,:) = ocp.get('sens_u');
+    ocp_solver.eval_param_sens(field, stage, index);
+    sens_u(index+1,:) = ocp_solver.get('sens_u');
 end
 disp('solution sensitivity dU_dx0')
 disp(sens_u)
 
 
-% qp_hess = ocp.get('qp_solver_cond_H');
+% qp_hess = ocp_solver.get('qp_solver_cond_H');
 % nv = size(qp_hess, 1);
 % % make full
 % for jj=1:nv

@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -89,13 +86,15 @@ int main()
 
 	double *Su = calloc(nx*nu, sizeof(double));
 
-	double *S_adj = calloc(nx+nu, sizeof(double));
+	double *seed_adj = calloc(nx, sizeof(double));
 	for (ii = 0; ii < nx; ii++)
-		S_adj[ii] = 1.0;
+		seed_adj[ii] = 1.0;
 
     /************************************************
     * external functions (explicit model)
     ************************************************/
+    external_function_opts ext_fun_opts;
+    external_function_opts_set_to_default(&ext_fun_opts);
 
     // forward explicit VDE
 
@@ -106,7 +105,7 @@ int main()
     expl_vde_for.casadi_sparsity_out = &vdeFun_sparsity_out;
     expl_vde_for.casadi_n_in = &vdeFun_n_in;
     expl_vde_for.casadi_n_out = &vdeFun_n_out;
-    external_function_casadi_create(&expl_vde_for);
+    external_function_casadi_create(&expl_vde_for, &ext_fun_opts);
 
 
     // adjoint explicit VDE
@@ -118,7 +117,7 @@ int main()
     expl_vde_adj.casadi_sparsity_out = &adjFun_sparsity_out;
     expl_vde_adj.casadi_n_in = &adjFun_n_in;
     expl_vde_adj.casadi_n_out = &adjFun_n_out;
-    external_function_casadi_create(&expl_vde_adj);
+    external_function_casadi_create(&expl_vde_adj, &ext_fun_opts);
 
 
     // hessian explicit ODE
@@ -130,7 +129,7 @@ int main()
     expl_hess_ode.casadi_sparsity_out = &hessFun_sparsity_out;
     expl_hess_ode.casadi_n_in = &hessFun_n_in;
     expl_hess_ode.casadi_n_out = &hessFun_n_out;
-    external_function_casadi_create(&expl_hess_ode);
+    external_function_casadi_create(&expl_hess_ode, &ext_fun_opts);
 
 
     /************************************************
@@ -146,7 +145,7 @@ int main()
     impl_ode_fun.casadi_sparsity_out = &casadi_impl_ode_fun_sparsity_out;
     impl_ode_fun.casadi_n_in = &casadi_impl_ode_fun_n_in;
     impl_ode_fun.casadi_n_out = &casadi_impl_ode_fun_n_out;
-    external_function_casadi_create(&impl_ode_fun);
+    external_function_casadi_create(&impl_ode_fun, &ext_fun_opts);
 
     //
 
@@ -157,7 +156,7 @@ int main()
     impl_ode_fun_jac_x_xdot.casadi_sparsity_out = &casadi_impl_ode_fun_jac_x_xdot_sparsity_out;
     impl_ode_fun_jac_x_xdot.casadi_n_in = &casadi_impl_ode_fun_jac_x_xdot_n_in;
     impl_ode_fun_jac_x_xdot.casadi_n_out = &casadi_impl_ode_fun_jac_x_xdot_n_out;
-    external_function_casadi_create(&impl_ode_fun_jac_x_xdot);
+    external_function_casadi_create(&impl_ode_fun_jac_x_xdot, &ext_fun_opts);
 
     //
 
@@ -168,7 +167,7 @@ int main()
     impl_ode_jac_x_xdot_u.casadi_sparsity_out = &casadi_impl_ode_jac_x_xdot_u_sparsity_out;
     impl_ode_jac_x_xdot_u.casadi_n_in = &casadi_impl_ode_jac_x_xdot_u_n_in;
     impl_ode_jac_x_xdot_u.casadi_n_out = &casadi_impl_ode_jac_x_xdot_u_n_out;
-    external_function_casadi_create(&impl_ode_jac_x_xdot_u);
+    external_function_casadi_create(&impl_ode_jac_x_xdot_u, &ext_fun_opts);
 
     int number_sim_solvers = 2;
     int nss;
@@ -236,7 +235,7 @@ int main()
 		sim_in_set(config, dims, in, "u", uref);
 		sim_in_set(config, dims, in, "Sx", Sx);
 		sim_in_set(config, dims, in, "Su", Su);
-		sim_in_set(config, dims, in, "S_adj", S_adj);
+		sim_in_set(config, dims, in, "seed_adj", seed_adj);
 
         // external functions
         switch (nss)
@@ -271,7 +270,8 @@ int main()
         * sim solver
         ************************************************/
 
-        sim_solver *sim_solver = sim_solver_create(config, dims, opts);
+        sim_solver *sim_solver = sim_solver_create(config, dims, opts, in);
+        sim_precompute(sim_solver, in, out);
 
         int acados_return;
 
@@ -372,7 +372,7 @@ int main()
 	free(uref);
 	free(Sx);
 	free(Su);
-	free(S_adj);
+	free(seed_adj);
 
     // explicit model
     external_function_casadi_free(&expl_vde_for);

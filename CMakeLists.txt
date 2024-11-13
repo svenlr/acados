@@ -1,8 +1,5 @@
 #
-# Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-# Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-# Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-# Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+# Copyright (c) The acados authors.
 #
 # This file is part of acados.
 #
@@ -32,7 +29,7 @@
 #
 
 
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.7.1)
 
 if(CMAKE_MAKE_PROGRAM)
     file(TO_CMAKE_PATH ${CMAKE_MAKE_PROGRAM} CMAKE_MAKE_PROGRAM)
@@ -47,11 +44,25 @@ set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 
 ### Defaults
 
-set(ACADOS_INSTALL_DIR "${PROJECT_SOURCE_DIR}" CACHE PATH  "Installation path to PROJECT_SOURCE_DIR")
-if ("${CMAKE_HOST_SYSTEM_PROCESSOR}" STREQUAL "aarch64")
-  set(BLASFEO_TARGET "ARMV8A_ARM_CORTEX_A57" CACHE STRING "BLASFEO Target architecture")
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+    if(DEFINED ACADOS_INSTALL_DIR)
+        set_property(CACHE CMAKE_INSTALL_PREFIX PROPERTY VALUE "${ACADOS_INSTALL_DIR}")
+    else()
+        set_property(CACHE CMAKE_INSTALL_PREFIX PROPERTY VALUE "${PROJECT_SOURCE_DIR}")
+    endif()
 else()
-  set(BLASFEO_TARGET "X64_AUTOMATIC" CACHE STRING "BLASFEO Target architecture")
+    if(DEFINED ACADOS_INSTALL_DIR)
+        if(NOT ${ACADOS_INSTALL_DIR} STREQUAL ${CMAKE_INSTALL_PREFIX})
+            set(CMAKE_INSTALL_PREFIX ${ACADOS_INSTALL_DIR})
+            message(WARNING "CMAKE_INSTALL_PREFIX is overwritten by ACADOS_INSTALL_DIR, installing to ACADOS_INSTALL_DIR = ${ACADOS_INSTALL_DIR}")
+        endif()
+    endif()
+endif()
+
+if ("${CMAKE_HOST_SYSTEM_PROCESSOR}" STREQUAL "aarch64")
+    set(BLASFEO_TARGET "ARMV8A_ARM_CORTEX_A57" CACHE STRING "BLASFEO Target architecture")
+else()
+    set(BLASFEO_TARGET "X64_AUTOMATIC" CACHE STRING "BLASFEO Target architecture")
 endif()
 set(HPIPM_TARGET "X64_AUTOMATIC" CACHE STRING "HPIPM Target architecture")
 set(LA "HIGH_PERFORMANCE" CACHE STRING "Linear algebra optimization level")
@@ -64,27 +75,26 @@ endif()
 
 option(ACADOS_WITH_OPENMP "OpenMP Parallelization" OFF)
 option(ACADOS_SILENT "No console status output" OFF)
+option(ACADOS_DEBUG_SQP_PRINT_QPS_TO_FILE "Print QP inputs and outputs to file in SQP" OFF)
 
 # Additional targets
 option(ACADOS_UNIT_TESTS "Compile Unit tests" OFF)
 option(ACADOS_EXAMPLES "Compile Examples" OFF)
 option(ACADOS_LINT "Compile Lint" OFF)
-# Extarnal libs
-option(ACADOS_WITH_QPOASES  "qpOASES solver" OFF)
+# External libs
+option(ACADOS_WITH_QPOASES "qpOASES solver" OFF)
+option(ACADOS_WITH_DAQP "DAQP solver" OFF)
 option(ACADOS_WITH_HPMPC "HPMPC solver" OFF)
 option(ACADOS_WITH_QORE "QORE solver" OFF)
 option(ACADOS_WITH_OOQP "OOQP solver" OFF)
 option(ACADOS_WITH_QPDUNES "qpDUNES solver" OFF)
 option(ACADOS_WITH_OSQP "OSQP solver" OFF)
 # Interfaces
-option(ACADOS_MATLAB "The Matlab Interface" OFF)
-option(ACADOS_OCTAVE "The Octave Interface" OFF)
-option(ACADOS_OCTAVE_TEMPLATE "Template MEX Interface" OFF)
-option(ACADOS_PYTHON "Python Interface" OFF)
+option(ACADOS_OCTAVE "Octave Interface tests" OFF)
+option(ACADOS_PYTHON "Python Interface tests" OFF)
 
 
 # Set custom path
-set(CMAKE_INSTALL_PREFIX ${ACADOS_INSTALL_DIR})
 set(EXTERNAL_SRC_DIR ${PROJECT_SOURCE_DIR}/external)
 set(BLASFEO_SRC_DIR ${PROJECT_SOURCE_DIR}/external/blasfeo)
 
@@ -94,7 +104,6 @@ if(NOT CMAKE_BUILD_TYPE)
         CACHE STRING "Valid build types are: \
         Release (default), None, Debug, WithExternalLibs, RelWithDebInfo, MinSizeRel." FORCE)
 endif()
-### Defaults
 
 message(STATUS "Build type is ${CMAKE_BUILD_TYPE}")
 
@@ -105,9 +114,16 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU" AND NOT CMAKE_SYSTEM_NAME MATCHES "Window
 endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU" AND CMAKE_SYSTEM_NAME MATCHES "Windows")
-    # MinGW, change to .lib such that mex recognizes it
+    # MinGW: remove prefix and change suffix to match MSVC
+    # (such that Matlab mex recognizes the libraries)
+    set(CMAKE_SHARED_LIBRARY_PREFIX "")
+    set(CMAKE_IMPORT_LIBRARY_SUFFIX ".lib")
+    set(CMAKE_IMPORT_LIBRARY_PREFIX "")
     set(CMAKE_STATIC_LIBRARY_SUFFIX ".lib")
     set(CMAKE_STATIC_LIBRARY_PREFIX "")
+    if(BUILD_SHARED_LIBS MATCHES ON)
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wl,--export-all-symbols")
+    endif()
 endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -116,6 +132,9 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
     set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} /MT")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
+    if(BUILD_SHARED_LIBS MATCHES ON)
+        set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS 1)
+    endif()
 endif()
 
 # OPENMP
@@ -162,6 +181,12 @@ if(ACADOS_SILENT)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DACADOS_SILENT")
 endif()
 
+if(ACADOS_DEBUG_SQP_PRINT_QPS_TO_FILE)
+    message(STATUS "ACADOS_DEBUG_SQP_PRINT_QPS_TO_FILE is ON")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DACADOS_DEBUG_SQP_PRINT_QPS_TO_FILE")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DACADOS_DEBUG_SQP_PRINT_QPS_TO_FILE")
+endif()
+
 # uninstall
 if(NOT TARGET uninstall)
     # Configure Uninstall
@@ -184,6 +209,7 @@ if(CMAKE_BUILD_TYPE MATCHES WithExternalLibs)
     set(ACADOS_WITH_QORE ON CACHE BOOL "Add QORE solver")
     set(ACADOS_WITH_OOQP ON CACHE BOOL "Add OOQP solver")
     set(ACADOS_WITH_QPOASES ON CACHE BOOL "Add qpOASES solver")
+	set(ACADOS_WITH_DAQP ON CACHE BOOL "Add DAQP solver")
     set(ACADOS_WITH_QPDUNES ON CACHE BOOL "Add qpDUNES solver")
     set(ACADOS_WITH_OSQP ON CACHE BOOL "Add OSQP solver")
 endif()
@@ -228,7 +254,7 @@ if(ACADOS_LINT)
     endif()
 endif()
 
-if(ACADOS_MATLAB OR ACADOS_OCTAVE OR ACADOS_OCTAVE_TEMPLATE OR ACADOS_PYTHON)
+if(ACADOS_OCTAVE OR ACADOS_PYTHON)
     add_subdirectory(${PROJECT_SOURCE_DIR}/interfaces)
 endif()
 
@@ -264,9 +290,7 @@ endif()
 message(STATUS " ")
 message(STATUS "Target: BLASFEO is ${BLASFEO_TARGET}, HPIPM is ${HPIPM_TARGET}")
 message(STATUS "Linear algebra: ${LA}")
-message(STATUS "Matlab MEX (${ACADOS_MATLAB})")
 message(STATUS "Octave MEX (${ACADOS_OCTAVE})")
-message(STATUS "Octave Templates (${ACADOS_OCTAVE_TEMPLATE})")
 message(STATUS "System name:version ${CMAKE_SYSTEM_NAME}:${CMAKE_SYSTEM_VERSION}")
 message(STATUS "Build type is ${CMAKE_BUILD_TYPE}")
 message(STATUS "Installation directory is ${CMAKE_INSTALL_PREFIX}")
@@ -290,6 +314,9 @@ endif()
 if(${ACADOS_WITH_QPOASES})
     set(LINK_FLAG_QPOASES -lqpOASES_e)
 endif()
+if(${ACADOS_WITH_DAQP})
+    set(LINK_FLAG_DAQP -ldaqp)
+endif()
 if(${ACADOS_WITH_QPDUNES})
     set(LINK_FLAG_QPDUNES -lqpdunes)
 endif()
@@ -310,6 +337,7 @@ endif()
 file(WRITE lib/link_libs.json {\n)
 file(APPEND lib/link_libs.json \t\"openmp\":\ \"${LINK_FLAG_OPENMP}\",\n)
 file(APPEND lib/link_libs.json \t\"qpoases\":\ \"${LINK_FLAG_QPOASES}\",\n)
+file(APPEND lib/link_libs.json \t\"daqp\":\ \"${LINK_FLAG_DAQP}\",\n)
 file(APPEND lib/link_libs.json \t\"qpdunes\":\ \"${LINK_FLAG_QPDUNES}\",\n)
 file(APPEND lib/link_libs.json \t\"osqp\":\ \"${LINK_FLAG_OSQP}\",\n)
 file(APPEND lib/link_libs.json \t\"hpmpc\":\ \"${LINK_FLAG_HPMPC}\",\n)

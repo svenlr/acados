@@ -1,8 +1,5 @@
 %
-% Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-% Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-% Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-% Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+% Copyright (c) The acados authors.
 %
 % This file is part of acados.
 %
@@ -29,21 +26,24 @@
 % CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 % ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.;
+
 %
 
-function generate_get_gnsf_structure(model, opts)
+% TODO delete!?
 
-output_dir = opts.output_dir;
+function generate_get_gnsf_structure(model, output_dir)
 
-fileID = fopen(fullfile(output_dir, 'get_gnsf_structure.m'), 'w');
+    fileID = fopen(fullfile(output_dir, 'get_gnsf_structure.m'), 'w');
 
-fprintf(fileID, 'function model = get_gnsf_structure(model)\n');
-fprintf(fileID, 'model.dim_gnsf_nx1 = %d;\n', model.dim_gnsf_nx1);
-%fprintf(fileID, 'model.dim_gnsf_nx2 = %d;\n', model.dim_gnsf_nx2);
-fprintf(fileID, 'model.dim_gnsf_nz1 = %d;\n', model.dim_gnsf_nz1);
-%fprintf(fileID, 'model.dim_gnsf_nz2 = %d;\n', model.dim_gnsf_nz2);
-fprintf(fileID, 'model.dim_gnsf_nuhat = %d;\n', model.dim_gnsf_nuhat);
-fprintf(fileID, 'model.dim_gnsf_ny = %d;\n', model.dim_gnsf_ny);
-fprintf(fileID, 'model.dim_gnsf_nout = %d;\n', model.dim_gnsf_nout);
+    fprintf(fileID, 'function model = get_gnsf_structure(model)\n');
+    fprintf(fileID, 'model.dim_gnsf_nx1 = %d;\n', model.dim_gnsf_nx1);
+    %fprintf(fileID, 'model.dim_gnsf_nx2 = %d;\n', model.dim_gnsf_nx2);
+    fprintf(fileID, 'model.dim_gnsf_nz1 = %d;\n', model.dim_gnsf_nz1);
+    %fprintf(fileID, 'model.dim_gnsf_nz2 = %d;\n', model.dim_gnsf_nz2);
+    fprintf(fileID, 'model.dim_gnsf_nuhat = %d;\n', model.dim_gnsf_nuhat);
+    fprintf(fileID, 'model.dim_gnsf_ny = %d;\n', model.dim_gnsf_ny);
+    fprintf(fileID, 'model.dim_gnsf_nout = %d;\n', model.dim_gnsf_nout);
 
-fclose(fileID);
+    fclose(fileID);
+
+end

@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -48,7 +45,7 @@ extern "C" {
  ************************************************/
 
 //
-void external_function_param_generic_create(external_function_param_generic *fun, int np);
+void external_function_param_generic_create(external_function_param_generic *fun, int np, external_function_opts *opts_);
 //
 void external_function_param_generic_free(external_function_param_generic *fun);
 
@@ -59,11 +56,11 @@ void external_function_param_generic_free(external_function_param_generic *fun);
  ************************************************/
 
 //
-void external_function_casadi_create(external_function_casadi *fun);
+void external_function_casadi_create(external_function_casadi *fun, external_function_opts *opts_);
 //
 void external_function_casadi_free(external_function_casadi *fun);
 //
-void external_function_casadi_create_array(int size, external_function_casadi *funs);
+void external_function_casadi_create_array(int size, external_function_casadi *funs, external_function_opts *opts_);
 //
 void external_function_casadi_free_array(int size, external_function_casadi *funs);
 
@@ -74,14 +71,36 @@ void external_function_casadi_free_array(int size, external_function_casadi *fun
  ************************************************/
 
 //
-void external_function_param_casadi_create(external_function_param_casadi *fun, int np);
+void external_function_param_casadi_create(external_function_param_casadi *fun, int np, external_function_opts *opts_);
 //
 void external_function_param_casadi_free(external_function_param_casadi *fun);
 //
 void external_function_param_casadi_create_array(int size, external_function_param_casadi *funs,
-                                                 int np);
+                                                 int np, external_function_opts *opts_);
 //
 void external_function_param_casadi_free_array(int size, external_function_param_casadi *funs);
+
+
+
+/************************************************
+ * external_function_external_param_casadi
+ ************************************************/
+
+//
+void external_function_external_param_casadi_create(external_function_external_param_casadi *fun, external_function_opts *opts_);
+//
+void external_function_external_param_casadi_free(external_function_external_param_casadi *fun);
+
+/************************************************
+ * external_function_external_param_generic
+ ************************************************/
+
+//
+void external_function_external_param_generic_create(external_function_external_param_generic *fun, external_function_opts *opts_);
+//
+void external_function_external_param_generic_free(external_function_external_param_generic *fun);
+
+
 
 
 

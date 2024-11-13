@@ -1,8 +1,5 @@
 #
-# Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-# Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-# Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-# Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+# Copyright (c) The acados authors.
 #
 # This file is part of acados.
 #
@@ -37,12 +34,13 @@
 
 SPHINXOPTS    =
 SPHINXBUILD   = python -msphinx
+SPHINXBUILD   = sphinx-build
 DOXYBUILD     = doxygen
 SPHINXPROJ    = acados
 SOURCEDIR     = .
 BUILDDIR      = _build
 GENERATED     = .doctrees _static _sources .buildinfo .nojekyll genindex.html objects.inv search.html searchindex.js
-DOXYBUILDDIR  = _build_doxygen_c_interface _build_doxygen
+DOXYBUILDDIR  = _build_doxygen # _build_doxygen_c_interface
 
 
 default: doxygen html
@@ -54,8 +52,8 @@ html:
 	@$(SPHINXBUILD) -b $@ "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
 
 doxygen:
-	@$(DOXYBUILD) c_interface/Doxyfile
 	@$(DOXYBUILD) doxygen/Doxyfile
+	@$(DOXYBUILD) c_interface/Doxyfile
 
 # Catch-all target: route all unknown targets to Sphinx using the new
 # "make mode" option.  $(O) is meant as a shortcut for $(SPHINXOPTS).
@@ -63,7 +61,7 @@ doxygen:
 	@$(SPHINXBUILD) -M $@ "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
 
 upload:
-	rsync -aP -e ssh $(BUILDDIR)/* acados_website@syscop.de:~/website_public/
+	rsync -aP -e ssh $(BUILDDIR)/ acados_website@syscop.de:~/website_public/ --delete
 
 clean:
 	@echo Clean Sphinx

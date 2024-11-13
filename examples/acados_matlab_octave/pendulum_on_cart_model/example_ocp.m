@@ -1,8 +1,5 @@
 %
-% Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-% Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-% Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-% Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+% Copyright (c) The acados authors.
 %
 % This file is part of acados.
 %
@@ -29,10 +26,18 @@
 % CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 % ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.;
-%
 
-%% test of native matlab interface
-clear VARIABLES
+
+
+% NOTE: `acados` currently supports both an old MATLAB/Octave interface (< v0.4.0)
+% as well as a new interface (>= v0.4.0).
+
+% THIS EXAMPLE still uses the OLD interface. If you are new to `acados` please start
+% with the examples that have been ported to the new interface already.
+% see https://github.com/acados/acados/issues/1196#issuecomment-2311822122)
+
+
+clear all; clc;
 
 % check that env.sh has been run
 env_run = getenv('ENV_RUN');
@@ -42,7 +47,6 @@ end
 
 %% arguments
 compile_interface = 'true'; %'auto';
-codgen_model = 'true';
 gnsf_detect_struct = 'true';
 
 % discretization
@@ -83,7 +87,7 @@ model_name = 'ocp_pendulum';
 
 
 %% create model entries
-model = pendulum_on_cart_model;
+model = pendulum_on_cart_model();
 
 % dims
 T = N*h; % horizon length time
@@ -160,10 +164,10 @@ ocp_model.set('cost_type_e', cost_type);
 % dynamics
 if (strcmp(sim_method, 'erk'))
 	ocp_model.set('dyn_type', 'explicit');
-	ocp_model.set('dyn_expr_f', model.expr_f_expl);
+	ocp_model.set('dyn_expr_f', model.dyn_expr_f_expl);
 else % irk irk_gnsf
 	ocp_model.set('dyn_type', 'implicit');
-	ocp_model.set('dyn_expr_f', model.expr_f_impl);
+	ocp_model.set('dyn_expr_f', model.dyn_expr_f_impl);
 end
 % constraints
 ocp_model.set('constr_x0', x0);
@@ -176,7 +180,10 @@ if (ng>0)
 	ocp_model.set('constr_lg_e', lg_e);
 	ocp_model.set('constr_ug_e', ug_e);
 elseif (nh>0)
-	ocp_model.set('constr_expr_h', model.expr_h);
+	ocp_model.set('constr_expr_h_0', model.constr_expr_h);
+	ocp_model.set('constr_lh_0', lbu);
+	ocp_model.set('constr_uh_0', ubu);
+	ocp_model.set('constr_expr_h', model.constr_expr_h);
 	ocp_model.set('constr_lh', lbu);
 	ocp_model.set('constr_uh', ubu);
 %	ocp_model.set('constr_expr_h_e', model.expr_h_e);
@@ -190,14 +197,10 @@ else
 	ocp_model.set('constr_lbu', lbu);
 	ocp_model.set('constr_ubu', ubu);
 end
-disp('ocp_model.model_struct')
-disp(ocp_model.model_struct)
-
 
 %% acados ocp opts
 ocp_opts = acados_ocp_opts();
 ocp_opts.set('compile_interface', compile_interface);
-ocp_opts.set('codgen_model', codgen_model);
 ocp_opts.set('param_scheme_N', N);
 ocp_opts.set('nlp_solver', nlp_solver);
 ocp_opts.set('nlp_solver_exact_hessian', nlp_solver_exact_hessian);
@@ -227,19 +230,17 @@ if (strcmp(sim_method, 'irk_gnsf'))
 	ocp_opts.set('gnsf_detect_struct', gnsf_detect_struct);
 end
 
-disp('ocp_opts');
-disp(ocp_opts.opts_struct);
+%% create acados OCP solver
+solver_creation = 'transcribe_explicit'
 
-
-%% acados ocp
-% create ocp
-ocp = acados_ocp(ocp_model, ocp_opts);
-ocp
-disp('ocp.C_ocp');
-disp(ocp.C_ocp);
-disp('ocp.C_ocp_ext_fun');
-disp(ocp.C_ocp_ext_fun);
-%ocp.model_struct
+if strcmp(solver_creation, 'legacy')
+    % legacy interface
+    ocp_solver = acados_ocp(ocp_model, ocp_opts);
+elseif strcmp(solver_creation, 'transcribe_explicit')
+    % test translation to new OCP formulation object
+    ocp = setup_AcadosOcp_from_legacy_ocp_description(ocp_model, ocp_opts)
+    ocp_solver = AcadosOcpSolver(ocp);
+end
 
 
 % set trajectory initialization
@@ -250,37 +251,37 @@ x_traj_init = [linspace(0, 0, N+1); linspace(pi, 0, N+1); linspace(0, 0, N+1); l
 u_traj_init = zeros(nu, N);
 
 % if not set, the trajectory is initialized with the previous solution
-ocp.set('init_x', x_traj_init);
-ocp.set('init_u', u_traj_init);
+ocp_solver.set('init_x', x_traj_init);
+ocp_solver.set('init_u', u_traj_init);
 
 % change number of sqp iterations
-%ocp.set('nlp_solver_max_iter', 20);
+%ocp_solver.set('nlp_solver_max_iter', 20);
 
 % solve
 tic;
 
 % solve ocp
-ocp.solve();
+ocp_solver.solve();
 
 time_ext = toc;
 % TODO: add getter for internal timing
-fprintf(['time for ocp.solve (matlab tic-toc): ', num2str(time_ext), ' s\n'])
+fprintf(['time for ocp_solver.solve (matlab tic-toc): ', num2str(time_ext), ' s\n'])
 
 % get solution
-u = ocp.get('u');
-x = ocp.get('x');
+u = ocp_solver.get('u');
+x = ocp_solver.get('x');
 
 %% evaluation
-status = ocp.get('status');
-sqp_iter = ocp.get('sqp_iter');
-time_tot = ocp.get('time_tot');
-time_lin = ocp.get('time_lin');
-time_reg = ocp.get('time_reg');
-time_qp_sol = ocp.get('time_qp_sol');
+status = ocp_solver.get('status');
+sqp_iter = ocp_solver.get('sqp_iter');
+time_tot = ocp_solver.get('time_tot');
+time_lin = ocp_solver.get('time_lin');
+time_reg = ocp_solver.get('time_reg');
+time_qp_sol = ocp_solver.get('time_qp_sol');
 
 fprintf('\nstatus = %d, sqp_iter = %d, time_ext = %f [ms], time_int = %f [ms] (time_lin = %f [ms], time_qp_sol = %f [ms], time_reg = %f [ms])\n', status, sqp_iter, time_ext*1e3, time_tot*1e3, time_lin*1e3, time_qp_sol*1e3, time_reg*1e3);
 
-ocp.print('stat');
+ocp_solver.print('stat');
 
 
 %% figures
@@ -300,7 +301,7 @@ plot(0:N-1, u);
 xlim([0 N]);
 legend('F');
 
-stat = ocp.get('stat');
+stat = ocp_solver.get('stat');
 if (strcmp(nlp_solver, 'sqp'))
 	figure;
  	plot([0: size(stat,1)-1], log10(stat(:,2)), 'r-x');

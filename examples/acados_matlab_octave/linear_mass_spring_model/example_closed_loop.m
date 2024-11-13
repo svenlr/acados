@@ -1,8 +1,5 @@
 %
-% Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-% Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-% Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-% Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+% Copyright (c) The acados authors.
 %
 % This file is part of acados.
 %
@@ -29,24 +26,22 @@
 % CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 % ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.;
-%
+
+
+
+% NOTE: `acados` currently supports both an old MATLAB/Octave interface (< v0.4.0)
+% as well as a new interface (>= v0.4.0).
+
+% THIS EXAMPLE still uses the OLD interface. If you are new to `acados` please start
+% with the examples that have been ported to the new interface already.
+% see https://github.com/acados/acados/issues/1196#issuecomment-2311822122)
 
 %% example of closed loop simulation
-clear all
-
-
-
-% check that env.sh has been run
-env_run = getenv('ENV_RUN');
-if (~strcmp(env_run, 'true'))
-	error('env.sh has not been sourced! Before executing this example, run: source env.sh');
-end
-
-
+clear all; clc;
+check_acados_requirements()
 
 %% handy arguments
 compile_interface = 'auto';
-codgen_model = 'true';
 % simulation
 sim_method = 'irk';
 sim_sens_forw = 'false';
@@ -68,10 +63,10 @@ ocp_cost_type = 'linear_ls';
 %ocp_cost_type = 'ext_cost';
 
 
-
 %% setup problem
 % linear mass-spring system
-model = linear_mass_spring_model;
+model = linear_mass_spring_model();
+
 % dims
 T = 10.0; % horizon length time
 nx = model.nx; % number of states
@@ -80,6 +75,7 @@ ny = nu+nx; % number of outputs in lagrange term
 ny_e = nx; % number of outputs in mayer term
 nbx = nx/2; % number of state bounds
 nbu = nu; % number of input bounds
+
 % cost
 Vu = zeros(ny, nu); for ii=1:nu Vu(ii,ii)=1.0; end % input-to-output matrix in lagrange term
 Vx = zeros(ny, nx); for ii=1:nx Vx(nu+ii,ii)=1.0; end % state-to-output matrix in lagrange term
@@ -88,6 +84,7 @@ W = eye(ny); for ii=1:nu W(ii,ii)=2.0; end % weight matrix in lagrange term
 W_e = eye(ny_e); % weight matrix in mayer term
 yr = zeros(ny, 1); % output reference in lagrange term
 yr_e = zeros(ny_e, 1); % output reference in mayer term
+
 % constraints
 x0 = zeros(nx, 1); x0(1)=2.5; x0(2)=2.5;
 Jbx = zeros(nbx, nx); for ii=1:nbx Jbx(ii,ii)=1.0; end
@@ -97,11 +94,10 @@ Jbu = zeros(nbu, nu); for ii=1:nbu Jbu(ii,ii)=1.0; end
 lbu = -0.5*ones(nu, 1);
 ubu =  0.5*ones(nu, 1);
 
-
-
 %% acados ocp model
 ocp_model = acados_ocp_model();
 ocp_model.set('T', T);
+
 % symbolics
 ocp_model.set('sym_x', model.sym_x);
 if isfield(model, 'sym_u')
@@ -110,36 +106,46 @@ end
 if isfield(model, 'sym_xdot')
 	ocp_model.set('sym_xdot', model.sym_xdot);
 end
+
 % cost
+ocp_model.set('cost_type_0', ocp_cost_type);
 ocp_model.set('cost_type', ocp_cost_type);
 ocp_model.set('cost_type_e', ocp_cost_type);
 if (strcmp(ocp_cost_type, 'linear_ls'))
+    ocp_model.set('cost_Vu_0', Vu);
 	ocp_model.set('cost_Vu', Vu);
+    ocp_model.set('cost_Vx_0', Vx);
 	ocp_model.set('cost_Vx', Vx);
 	ocp_model.set('cost_Vx_e', Vx_e);
+    ocp_model.set('cost_W_0', W);
 	ocp_model.set('cost_W', W);
 	ocp_model.set('cost_W_e', W_e);
+    ocp_model.set('cost_y_ref_0', yr);
 	ocp_model.set('cost_y_ref', yr);
 	ocp_model.set('cost_y_ref_e', yr_e);
 elseif (strcmp(ocp_cost_type, 'nonlinear_ls'))
-	ocp_model.set('cost_expr_y', model.expr_y);
-	ocp_model.set('cost_expr_y_e', model.expr_y_e);
+    ocp_model.set('cost_expr_y_0', model.cost_expr_y);
+	ocp_model.set('cost_expr_y', model.cost_expr_y);
+	ocp_model.set('cost_expr_y_e', model.cost_expr_y_e);
 	ocp_model.set('cost_W', W);
 	ocp_model.set('cost_W_e', W_e);
 	ocp_model.set('cost_y_ref', yr);
 	ocp_model.set('cost_y_ref_e', yr_e);
 else % if (strcmp(ocp_cost_type, 'ext_cost'))
-	ocp_model.set('cost_expr_ext_cost', model.expr_ext_cost);
-	ocp_model.set('cost_expr_ext_cost_e', model.expr_ext_cost_e);
+    ocp_model.set('cost_expr_ext_cost_0', model.cost_expr_ext_cost);
+	ocp_model.set('cost_expr_ext_cost', model.cost_expr_ext_cost);
+	ocp_model.set('cost_expr_ext_cost_e', model.cost_expr_ext_cost_e);
 end
+
 % dynamics
 if (strcmp(ocp_sim_method, 'erk'))
 	ocp_model.set('dyn_type', 'explicit');
-	ocp_model.set('dyn_expr_f', model.expr_f_expl);
+	ocp_model.set('dyn_expr_f', model.dyn_expr_f_expl);
 else % irk
 	ocp_model.set('dyn_type', 'implicit');
-	ocp_model.set('dyn_expr_f', model.expr_f_impl);
+	ocp_model.set('dyn_expr_f', model.dyn_expr_f_impl);
 end
+
 % constraints
 ocp_model.set('constr_x0', x0);
 ocp_model.set('constr_Jbx', Jbx);
@@ -149,14 +155,9 @@ ocp_model.set('constr_Jbu', Jbu);
 ocp_model.set('constr_lbu', lbu);
 ocp_model.set('constr_ubu', ubu);
 
-ocp_model.model_struct
-
-
-
 %% acados ocp opts
 ocp_opts = acados_ocp_opts();
 ocp_opts.set('compile_interface', compile_interface);
-ocp_opts.set('codgen_model', codgen_model);
 ocp_opts.set('param_scheme_N', ocp_N);
 ocp_opts.set('nlp_solver', ocp_nlp_solver);
 ocp_opts.set('qp_solver', ocp_qp_solver);
@@ -168,21 +169,13 @@ ocp_opts.set('sim_method_num_stages', ocp_sim_method_num_stages);
 ocp_opts.set('sim_method_num_steps', ocp_sim_method_num_steps);
 ocp_opts.set('regularize_method', 'no_regularize');
 
-ocp_opts.opts_struct
-
-
-
 %% acados ocp
 % create ocp
-ocp = acados_ocp(ocp_model, ocp_opts);
-ocp
-% ocp.C_ocp
-% ocp.C_ocp_ext_fun
-
-
+ocp_solver = acados_ocp(ocp_model, ocp_opts);
 
 %% acados sim model
 sim_model = acados_sim_model();
+
 % symbolics
 sim_model.set('sym_x', model.sym_x);
 if isfield(model, 'sym_u')
@@ -191,41 +184,28 @@ end
 if isfield(model, 'sym_xdot')
 	sim_model.set('sym_xdot', model.sym_xdot);
 end
+
 % model
 sim_model.set('T', T/ocp_N);
 if (strcmp(sim_method, 'erk'))
 	sim_model.set('dyn_type', 'explicit');
-	sim_model.set('dyn_expr_f', model.expr_f_expl);
+	sim_model.set('dyn_expr_f', model.dyn_expr_f_expl);
 else % irk
 	sim_model.set('dyn_type', 'implicit');
-	sim_model.set('dyn_expr_f', model.expr_f_impl);
+	sim_model.set('dyn_expr_f', model.dyn_expr_f_impl);
 end
-
-sim_model.model_struct
-
-
 
 %% acados sim opts
 sim_opts = acados_sim_opts();
 sim_opts.set('compile_interface', compile_interface);
-sim_opts.set('codgen_model', codgen_model);
 sim_opts.set('num_stages', sim_num_stages);
 sim_opts.set('num_steps', sim_num_steps);
 sim_opts.set('method', sim_method);
 sim_opts.set('sens_forw', sim_sens_forw);
 
-sim_opts.opts_struct
-
-
-
 %% acados sim
 % create sim
-sim = acados_sim(sim_model, sim_opts);
-sim
-sim.C_sim
-sim.C_sim_ext_fun
-
-
+sim_solver = acados_sim(sim_model, sim_opts);
 
 %% closed loop simulation
 n_sim = 100;
@@ -241,30 +221,30 @@ tic;
 for ii=1:n_sim
 
 	% set x0
-	ocp.set('constr_x0', x_sim(:,ii));
+	ocp_solver.set('constr_x0', x_sim(:,ii));
 
 	% set trajectory initialization
-	ocp.set('init_x', x_traj_init);
-	ocp.set('init_u', u_traj_init);
+	ocp_solver.set('init_x', x_traj_init);
+	ocp_solver.set('init_u', u_traj_init);
 
 	% solve OCP
-	ocp.solve();
+	ocp_solver.solve();
 
 	% get solution
-	%x_traj = ocp.get('x');
-	%u_traj = ocp.get('u');
-	u_sim(:,ii) = ocp.get('u', 0);
+	%x_traj = ocp_solver.get('x');
+	%u_traj = ocp_solver.get('u');
+	u_sim(:,ii) = ocp_solver.get('u', 0);
 
 	% set initial state of sim
-	sim.set('x', x_sim(:,ii));
+	sim_solver.set('x', x_sim(:,ii));
 	% set input in sim
-	sim.set('u', u_sim(:,ii));
+	sim_solver.set('u', u_sim(:,ii));
 
 	% simulate state
-	sim.solve();
+	sim_solver.solve();
 
 	% get new state
-	x_sim(:,ii+1) = sim.get('xn');
+	x_sim(:,ii+1) = sim_solver.get('xn');
 end
 
 avg_time_solve = toc/n_sim
@@ -282,7 +262,7 @@ ylabel('u')
 xlabel('sample')
 
 
-status = ocp.get('status');
+status = ocp_solver.get('status');
 
 if status==0
 	fprintf('\nsuccess!\n\n');

@@ -1,8 +1,5 @@
 %
-% Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-% Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-% Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-% Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+% Copyright (c) The acados authors.
 %
 % This file is part of acados.
 %
@@ -29,22 +26,22 @@
 % CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 % ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.;
-%
-
-%% test of native matlab interface
-clear all
 
 
-% check that env.sh has been run
-env_run = getenv('ENV_RUN');
-if (~strcmp(env_run, 'true'))
-	error('env.sh has not been sourced! Before executing this example, run: source env.sh');
-end
 
+% NOTE: `acados` currently supports both an old MATLAB/Octave interface (< v0.4.0)
+% as well as a new interface (>= v0.4.0).
+
+% THIS EXAMPLE still uses the OLD interface. If you are new to `acados` please start
+% with the examples that have been ported to the new interface already.
+% see https://github.com/acados/acados/issues/1196#issuecomment-2311822122)
+
+
+clear all; clc;
+check_acados_requirements()
 
 %% arguments
 compile_interface = 'auto';
-codgen_model = 'true';
 %shooting_nodes = [0 0.1 0.2 0.3 0.5 1];
 N = 20;
 model_name = 'lin_mass';
@@ -74,12 +71,8 @@ sim_method_num_steps = 3;
 %cost_type = 'nonlinear_ls';
 cost_type = 'auto';
 
-
-
 %% create model entries
-model = linear_mass_spring_model;
-
-
+model = linear_mass_spring_model();
 
 % dims
 T = 10.0; % horizon length time
@@ -110,6 +103,7 @@ else
 	nh = nu+nx;
 	nh_e = nx;
 end
+
 % cost
 Vu = zeros(ny, nu); for ii=1:nu Vu(ii,ii)=1.0; end % input-to-output matrix in lagrange term
 Vx = zeros(ny, nx); for ii=1:nx Vx(nu+ii,ii)=1.0; end % state-to-output matrix in lagrange term
@@ -118,6 +112,7 @@ W = eye(ny); for ii=1:nu W(ii,ii)=2.0; end % weight matrix in lagrange term
 W_e = eye(ny_e); % weight matrix in mayer term
 yr = zeros(ny, 1); % output reference in lagrange term
 yr_e = zeros(ny_e, 1); % output reference in mayer term
+
 % constraints
 x0 = zeros(nx, 1); x0(1)=2.5; x0(2)=2.5;
 if (ng>0)
@@ -142,9 +137,6 @@ else
 	ubu =  0.5*ones(nbu, 1);
 end
 
-
-
-
 %% acados ocp model
 ocp_model = acados_ocp_model();
 ocp_model.set('name', model_name);
@@ -158,39 +150,49 @@ end
 if isfield(model, 'sym_xdot')
 	ocp_model.set('sym_xdot', model.sym_xdot);
 end
+
 % cost
+ocp_model.set('cost_type_0', cost_type);
 ocp_model.set('cost_type', cost_type);
 ocp_model.set('cost_type_e', cost_type);
 if (strcmp(cost_type, 'linear_ls'))
+    ocp_model.set('cost_Vu_0', Vu);
 	ocp_model.set('cost_Vu', Vu);
+    ocp_model.set('cost_Vx_0', Vx);
 	ocp_model.set('cost_Vx', Vx);
 	ocp_model.set('cost_Vx_e', Vx_e);
+    ocp_model.set('cost_W_0', W);
 	ocp_model.set('cost_W', W);
 	ocp_model.set('cost_W_e', W_e);
+    ocp_model.set('cost_y_ref_0', yr);
 	ocp_model.set('cost_y_ref', yr);
 	ocp_model.set('cost_y_ref_e', yr_e);
 elseif (strcmp(cost_type, 'nonlinear_ls'))
-	ocp_model.set('cost_expr_y', model.expr_y);
-	ocp_model.set('cost_expr_y_e', model.expr_y_e);
+    ocp_model.set('cost_expr_y_0', model.cost_expr_y);
+	ocp_model.set('cost_expr_y', model.cost_expr_y);
+	ocp_model.set('cost_expr_y_e', model.cost_expr_y_e);
 	ocp_model.set('cost_W', W);
 	ocp_model.set('cost_W_e', W_e);
 	ocp_model.set('cost_y_ref', yr);
 	ocp_model.set('cost_y_ref_e', yr_e);
 else % if (strcmp(cost_type, 'ext_cost'))
-	ocp_model.set('cost_expr_ext_cost', model.expr_ext_cost);
-	ocp_model.set('cost_expr_ext_cost_e', model.expr_ext_cost_e);
+    ocp_model.set('cost_expr_ext_cost_0', model.cost_expr_ext_cost);
+	ocp_model.set('cost_expr_ext_cost', model.cost_expr_ext_cost);
+	ocp_model.set('cost_expr_ext_cost_e', model.cost_expr_ext_cost_e);
 end
+
 % dynamics
 if (strcmp(dyn_type, 'explicit'))
 	ocp_model.set('dyn_type', 'explicit');
-	ocp_model.set('dyn_expr_f', model.expr_f_expl);
+	ocp_model.set('dyn_expr_f', model.dyn_expr_f_expl);
 elseif (strcmp(dyn_type, 'implicit'))
 	ocp_model.set('dyn_type', 'implicit');
-	ocp_model.set('dyn_expr_f', model.expr_f_impl);
+	ocp_model.set('dyn_expr_f', model.dyn_expr_f_impl);
 else
 	ocp_model.set('dyn_type', 'discrete');
-	ocp_model.set('dyn_expr_phi', model.expr_phi);
+	ocp_model.set('dyn_expr_phi', model.dyn_expr_phi);
 end
+
 % constraints
 ocp_model.set('constr_x0', x0);
 if (ng>0)
@@ -202,10 +204,13 @@ if (ng>0)
 	ocp_model.set('constr_lg_e', lg_e);
 	ocp_model.set('constr_ug_e', ug_e);
 elseif (nh>0)
-	ocp_model.set('constr_expr_h', model.expr_h);
+    ocp_model.set('constr_expr_h_0', model.constr_expr_h_0);
+	ocp_model.set('constr_lh_0', lh);
+	ocp_model.set('constr_uh_0', uh);
+	ocp_model.set('constr_expr_h', model.constr_expr_h);
 	ocp_model.set('constr_lh', lh);
 	ocp_model.set('constr_uh', uh);
-	ocp_model.set('constr_expr_h_e', model.expr_h_e);
+	ocp_model.set('constr_expr_h_e', model.constr_expr_h_e);
 	ocp_model.set('constr_lh_e', lh_e);
 	ocp_model.set('constr_uh_e', uh_e);
 else
@@ -217,14 +222,9 @@ else
 	ocp_model.set('constr_ubu', ubu);
 end
 
-ocp_model.model_struct
-
-
-
 %% acados ocp opts
 ocp_opts = acados_ocp_opts();
 ocp_opts.set('compile_interface', compile_interface);
-ocp_opts.set('codgen_model', codgen_model);
 ocp_opts.set('param_scheme_N', N);
 if (exist('shooting_nodes', 'var'))
 	ocp_opts.set('param_scheme_shooting_nodes', shooting_nodes);
@@ -244,53 +244,42 @@ if (strcmp(dyn_type, 'explicit') || strcmp(dyn_type, 'implicit'))
 	ocp_opts.set('sim_method_num_steps', sim_method_num_steps);
 end
 
-% ocp_opts.opts_struct
-
 %% acados ocp
 % create ocp
-ocp = acados_ocp(ocp_model, ocp_opts);
-ocp
-ocp.C_ocp
-ocp.C_ocp_ext_fun
-
-
+ocp_solver = acados_ocp(ocp_model, ocp_opts);
 
 % set trajectory initialization
 x_traj_init = zeros(nx, N+1);
 u_traj_init = zeros(nu, N);
-ocp.set('init_x', x_traj_init);
-ocp.set('init_u', u_traj_init);
-
+ocp_solver.set('init_x', x_traj_init);
+ocp_solver.set('init_u', u_traj_init);
 
 % solve
 tic;
-ocp.solve();
+ocp_solver.solve();
 time_ext = toc
 
-
 %x0(1) = 1.5;
-%ocp.set('constr_x0', x0);
+%ocp_solver.set('constr_x0', x0);
 
 % if not set, the trajectory is initialized with the previous solution
 
-
 % get solution
-u = ocp.get('u');
-x = ocp.get('x');
-
+u = ocp_solver.get('u');
+x = ocp_solver.get('x');
 
 % get info
-status = ocp.get('status');
-sqp_iter = ocp.get('sqp_iter');
-time_tot = ocp.get('time_tot');
-time_lin = ocp.get('time_lin');
-time_reg = ocp.get('time_reg');
-time_qp_sol = ocp.get('time_qp_sol');
+status = ocp_solver.get('status');
+sqp_iter = ocp_solver.get('sqp_iter');
+time_tot = ocp_solver.get('time_tot');
+time_lin = ocp_solver.get('time_lin');
+time_reg = ocp_solver.get('time_reg');
+time_qp_sol = ocp_solver.get('time_qp_sol');
 
 fprintf('\nstatus = %d, sqp_iter = %d, time_ext = %f [ms], time_int = %f [ms] (time_lin = %f [ms], time_qp_sol = %f [ms], time_reg = %f [ms])\n', status, sqp_iter, time_ext*1e3, time_tot*1e3, time_lin*1e3, time_qp_sol*1e3, time_reg*1e3);
 
 % print statistics
-ocp.print('stat')
+ocp_solver.print('stat')
 
 if status==0
 	fprintf('\nsuccess!\n\n');

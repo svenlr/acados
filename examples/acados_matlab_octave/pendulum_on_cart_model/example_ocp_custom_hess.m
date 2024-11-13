@@ -1,8 +1,5 @@
 %
-% Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-% Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-% Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-% Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+% Copyright (c) The acados authors.
 %
 % This file is part of acados.
 %
@@ -29,10 +26,18 @@
 % CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 % ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.;
+
 %
 
-%% test of native matlab interface
-clear all
+% NOTE: `acados` currently supports both an old MATLAB/Octave interface (< v0.4.0)
+% as well as a new interface (>= v0.4.0).
+
+% THIS EXAMPLE still uses the OLD interface. If you are new to `acados` please start
+% with the examples that have been ported to the new interface already.
+% see https://github.com/acados/acados/issues/1196#issuecomment-2311822122)
+
+
+clear all; clc;
 import casadi.*
 
 % model_path = fullfile(pwd,'..','pendulum_on_cart_model');
@@ -53,7 +58,7 @@ qp_solver_cond_N = 5; % for partial condensing
 sim_method = 'erk'; % erk, irk, irk_gnsf
 
 %% model dynamics
-model = pendulum_on_cart_model;
+model = pendulum_on_cart_model();
 nx = model.nx;
 nu = model.nu;
 
@@ -103,21 +108,23 @@ ocp_model.set('cost_expr_ext_cost_custom_hess_e', cost_expr_ext_cost_custom_hess
 % dynamics
 if (strcmp(sim_method, 'erk'))
     ocp_model.set('dyn_type', 'explicit');
-    ocp_model.set('dyn_expr_f', model.expr_f_expl);
+    ocp_model.set('dyn_expr_f', model.dyn_expr_f_expl);
 else % irk irk_gnsf
     ocp_model.set('dyn_type', 'implicit');
-    ocp_model.set('dyn_expr_f', model.expr_f_impl);
+    ocp_model.set('dyn_expr_f', model.dyn_expr_f_impl);
 end
 
 % constraints
 ocp_model.set('constr_type', 'auto');
-ocp_model.set('constr_expr_h', model.expr_h);
+ocp_model.set('constr_expr_h_0', model.constr_expr_h);
+ocp_model.set('constr_expr_h', model.constr_expr_h);
 U_max = 35;
-ocp_model.set('constr_lh', -U_max); % lower bound on h
-ocp_model.set('constr_uh', U_max);  % upper bound on h
+ocp_model.set('constr_lh_0', -U_max); % lower bound on h
+ocp_model.set('constr_uh_0', U_max);  % upper bound on h
+ocp_model.set('constr_lh', -U_max);
+ocp_model.set('constr_uh', U_max);
 
 ocp_model.set('constr_x0', x0);
-% ... see ocp_model.model_struct to see what other fields can be set
 
 %% acados ocp set opts
 ocp_opts = acados_ocp_opts();
@@ -128,10 +135,9 @@ ocp_opts.set('qp_solver', qp_solver);
 ocp_opts.set('qp_solver_cond_N', qp_solver_cond_N);
 ocp_opts.set('globalization', 'merit_backtracking');
 ocp_opts.set('nlp_solver_max_iter', 500);
-% ... see ocp_opts.opts_struct to see what other fields can be set
 
 %% create ocp solver
-ocp = acados_ocp(ocp_model, ocp_opts);
+ocp_solver = acados_ocp(ocp_model, ocp_opts);
 
 x_traj_init = zeros(nx, N+1);
 
@@ -143,25 +149,25 @@ u_traj_init = zeros(nu, N);
 
 %% call ocp solver
 % update initial state
-ocp.set('constr_x0', x0);
+ocp_solver.set('constr_x0', x0);
 
 % set trajectory initialization
-ocp.set('init_x', x_traj_init);
-ocp.set('init_u', u_traj_init);
-% ocp.set('init_pi', zeros(nx, N))
+ocp_solver.set('init_x', x_traj_init);
+ocp_solver.set('init_u', u_traj_init);
+% ocp_solver.set('init_pi', zeros(nx, N))
 
 % change values for specific shooting node using:
-%   ocp.set('field', value, optional: stage_index)
-% ocp.set('constr_lbx', x0, 0)
+%   ocp_solver.set('field', value, optional: stage_index)
+% ocp_solver.set('constr_lbx', x0, 0)
 
 % solve
-ocp.solve();
+ocp_solver.solve();
 % get solution
-utraj = ocp.get('u');
-xtraj = ocp.get('x');
+utraj = ocp_solver.get('u');
+xtraj = ocp_solver.get('x');
 
-status = ocp.get('status'); % 0 - success
-ocp.print('stat')
+status = ocp_solver.get('status'); % 0 - success
+ocp_solver.print('stat')
 
 %% Plots
 ts = linspace(0, T, N+1);
@@ -179,12 +185,3 @@ stairs(ts, [utraj'; utraj(end)])
 ylabel('F [N]')
 xlabel('t [s]')
 grid on
-
-%% go embedded
-% to generate templated C code
-% ocp.generate_c_code;
-
-% test MEX template based solver
-% cd c_generated_code
-% command = strcat('t_ocp = ', model_name, '_mex_solver');
-% eval( command );

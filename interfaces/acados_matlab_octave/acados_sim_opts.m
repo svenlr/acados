@@ -1,8 +1,5 @@
 %
-% Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-% Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-% Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-% Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+% Copyright (c) The acados authors.
 %
 % This file is part of acados.
 %
@@ -29,6 +26,7 @@
 % CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 % ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.;
+
 %
 
 classdef acados_sim_opts < handle
@@ -42,18 +40,17 @@ classdef acados_sim_opts < handle
 
 
     methods
-        
 
         function obj = acados_sim_opts()
             obj.opts_struct = struct;
             obj.opts_struct.compile_interface = 'auto'; % auto, true, false
-            obj.opts_struct.codgen_model = 'true';
             obj.opts_struct.compile_model = 'true';
             obj.opts_struct.method = 'irk';
-            obj.opts_struct.collocation_type = 'gauss_legendre'
+            obj.opts_struct.collocation_type = 'gauss_legendre';
             obj.opts_struct.num_stages = 4;
             obj.opts_struct.num_steps = 1;
             obj.opts_struct.newton_iter = 3;
+            obj.opts_struct.newton_tol = 0.0;
             obj.opts_struct.sens_forw = 'false';
             obj.opts_struct.sens_adj = 'false';
             obj.opts_struct.sens_hess = 'false';
@@ -62,6 +59,14 @@ classdef acados_sim_opts < handle
             obj.opts_struct.jac_reuse = 'false';
             obj.opts_struct.gnsf_detect_struct = 'true';
             obj.opts_struct.output_dir = fullfile(pwd, 'build');
+            % check whether flags are provided by environment variable
+            env_var = getenv("ACADOS_EXT_FUN_COMPILE_FLAGS");
+            if isempty(env_var)
+                obj.opts_struct.ext_fun_compile_flags = '-O2';
+            else
+                obj.opts_struct.ext_fun_compile_flags = env_var;
+            end
+            obj.opts_struct.parameter_values = [];
         end
 
 
@@ -73,8 +78,10 @@ classdef acados_sim_opts < handle
 
             if (strcmp(field, 'compile_interface'))
                 obj.opts_struct.compile_interface = value;
+            elseif (strcmp(field, 'ext_fun_compile_flags'))
+                obj.opts_struct.ext_fun_compile_flags = value;
             elseif (strcmp(field, 'codgen_model'))
-                obj.opts_struct.codgen_model = value;
+                warning('codgen_model is deprecated and has no effect.');
             elseif (strcmp(field, 'compile_model'))
                 obj.opts_struct.compile_model = value;
             elseif (strcmp(field, 'num_stages'))
@@ -82,6 +89,8 @@ classdef acados_sim_opts < handle
             elseif (strcmp(field, 'num_steps'))
                 obj.opts_struct.num_steps = value;
             elseif (strcmp(field, 'newton_iter'))
+                obj.opts_struct.newton_iter = value;
+            elseif (strcmp(field, 'newton_tol'))
                 obj.opts_struct.newton_iter = value;
             elseif (strcmp(field, 'method'))
                 obj.opts_struct.method = value;
@@ -108,6 +117,8 @@ classdef acados_sim_opts < handle
                     'please use compile_interface instead or dont set the option.', ...
                     'options are: true, false, auto.']);
                 keyboard
+            elseif (strcmp(field, 'parameter_values'))
+                obj.opts_struct.parameter_values = value;
             else
                 disp(['acados_sim_opts: set: wrong field: ', field]);
             end

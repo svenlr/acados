@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -50,6 +47,8 @@
 extern "C" {
 #endif
 
+#include <math.h>
+
 // blasfeo
 #include "blasfeo/include/blasfeo_common.h"
 
@@ -82,30 +81,14 @@ typedef struct
 acados_size_t ocp_nlp_cost_ls_dims_calculate_size(void *config);
 
 
-///  Assign memory pointed to by raw_memory to ocp_nlp-cost_ls dims struct 
+///  Assign memory pointed to by raw_memory to ocp_nlp-cost_ls dims struct
 ///
-///  \param[in] config structure containing configuration of ocp_nlp_cost 
+///  \param[in] config structure containing configuration of ocp_nlp_cost
 ///  module
-///  \param[in] raw_memory pointer to memory location  
+///  \param[in] raw_memory pointer to memory location
 ///  \param[out] []
 ///  \return dims
 void *ocp_nlp_cost_ls_dims_assign(void *config, void *raw_memory);
-
-
-///  Initialize the dimensions struct of the 
-///  ocp_nlp-cost_ls component    
-///
-///  \param[in] config structure containing configuration ocp_nlp-cost_ls component 
-///  \param[in] nx number of states
-///  \param[in] nu number of inputs
-///  \param[in] ny number of residuals
-///  \param[in] ns number of slacks
-///  \param[in] nz number of algebraic variables
-///  \param[out] dims
-///  \return size
-void ocp_nlp_cost_ls_dims_initialize(void *config, void *dims, int nx,
-        int nu, int ny, int ns, int nz);
-
 //
 void ocp_nlp_cost_ls_dims_set(void *config_, void *dims_, const char *field, int* value);
 //
@@ -117,7 +100,7 @@ void ocp_nlp_cost_ls_dims_get(void *config_, void *dims_, const char *field, int
 ////////////////////////////////////////////////////////////////////////////////
 
 
-/// structure containing the data describing the linear least-square cost 
+/// structure containing the data describing the linear least-square cost
 typedef struct
 {
     // slack penalty has the form z^T * s + .5 * s^T * Z * s
@@ -128,6 +111,9 @@ typedef struct
     struct blasfeo_dvec Z;              ///< diagonal Hessian of slacks as vector (lower and upper)
     struct blasfeo_dvec z;              ///< gradient of slacks as vector (lower and upper)
     double scaling;
+    double outer_hess_is_diag;
+    int W_changed;                      ///< flag indicating whether W has changed and needs to be refactorized
+    int Cyt_or_scaling_changed;         ///< flag indicating whether Cyt or scaling has changed and Hessian needs to be recomputed
 } ocp_nlp_cost_ls_model;
 
 //
@@ -148,7 +134,7 @@ int ocp_nlp_cost_ls_model_set(void *config_, void *dims_, void *model_,
 
 typedef struct
 {
-    int dummy; // struct can't be void
+    int compute_hess;
 } ocp_nlp_cost_ls_opts;
 
 //
@@ -170,21 +156,21 @@ void ocp_nlp_cost_ls_opts_set(void *config, void *opts, const char *field, void 
 
 
 
-/// structure containing the memory associated with cost_ls component 
+/// structure containing the memory associated with cost_ls component
 /// of the ocp_nlp module
 typedef struct
 {
     struct blasfeo_dmat hess;           ///< hessian of cost function
     struct blasfeo_dmat W_chol;         ///< cholesky factor of weight matrix
+    struct blasfeo_dvec W_chol_diag;    ///< W_chol_diag
     struct blasfeo_dvec res;            ///< ls residual r(x)
     struct blasfeo_dvec grad;           ///< gradient of cost function
     struct blasfeo_dvec *ux;            ///< pointer to ux in nlp_out
-    struct blasfeo_dvec *tmp_ux;        ///< pointer to ux in tmp_nlp_out
     struct blasfeo_dvec *z_alg;         ///< pointer to z in sim_out
     struct blasfeo_dmat *dzdux_tran;    ///< pointer to sensitivity of a wrt ux in sim_out
     struct blasfeo_dmat *RSQrq;         ///< pointer to RSQrq in qp_in
     struct blasfeo_dvec *Z;             ///< pointer to Z in qp_in
-	double fun;                         ///< value of the cost function
+    double fun;                         ///< value of the cost function
 } ocp_nlp_cost_ls_memory;
 
 //
@@ -201,8 +187,6 @@ void ocp_nlp_cost_ls_memory_set_RSQrq_ptr(struct blasfeo_dmat *RSQrq, void *memo
 void ocp_nlp_cost_ls_memory_set_Z_ptr(struct blasfeo_dvec *Z, void *memory);
 //
 void ocp_nlp_cost_ls_memory_set_ux_ptr(struct blasfeo_dvec *ux, void *memory_);
-//
-void ocp_nlp_cost_ls_memory_set_tmp_ux_ptr(struct blasfeo_dvec *tmp_ux, void *memory_);
 //
 void ocp_nlp_cost_ls_memory_set_z_alg_ptr(struct blasfeo_dvec *z_alg, void *memory_);
 //
@@ -229,6 +213,10 @@ typedef struct
 
 //
 acados_size_t ocp_nlp_cost_ls_workspace_calculate_size(void *config, void *dims, void *opts);
+//
+size_t ocp_nlp_cost_ls_get_external_fun_workspace_requirement(void *config_, void *dims_, void *opts_, void *model_);
+//
+void ocp_nlp_cost_ls_set_external_fun_workspaces(void *config_, void *dims_, void *opts_, void *model_, void *workspace_);
 
 
 
@@ -237,9 +225,10 @@ acados_size_t ocp_nlp_cost_ls_workspace_calculate_size(void *config, void *dims,
 ////////////////////////////////////////////////////////////////////////////////
 
 
-
+// computations that are done once when solver is created
+void ocp_nlp_cost_ls_precompute(void *config_, void *dims_, void *model_, void *opts_, void *memory_, void *work_);
 //
-void ocp_nlp_cost_ls_config_initialize_default(void *config);
+void ocp_nlp_cost_ls_config_initialize_default(void *config, int stage);
 //
 void ocp_nlp_cost_ls_initialize(void *config_, void *dims, void *model_, void *opts_,
                                 void *mem_, void *work_);
@@ -247,7 +236,12 @@ void ocp_nlp_cost_ls_initialize(void *config_, void *dims, void *model_, void *o
 void ocp_nlp_cost_ls_update_qp_matrices(void *config_, void *dims, void *model_,
                                         void *opts_, void *memory_, void *work_);
 //
-void ocp_nlp_cost_ls_compute_fun(void *config_, void *dims, void *model_, void *opts_, void *memory_, void *work_);
+void ocp_nlp_cost_ls_compute_fun(void *config_, void *dims, void *model_, void *opts_,
+                                 void *memory_, void *work_);
+//
+void ocp_nlp_cost_ls_compute_jac_p(void *config_, void *dims, void *model_, void *opts_, void *memory_, void *work_);
+//
+void ocp_nlp_cost_ls_eval_grad_p(void *config_, void *dims, void *model_, void *opts_, void *memory_, void *work_, struct blasfeo_dvec *out);
 
 #ifdef __cplusplus
 } /* extern "C" */

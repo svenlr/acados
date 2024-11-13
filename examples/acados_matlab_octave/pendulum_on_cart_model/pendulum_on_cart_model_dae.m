@@ -1,8 +1,5 @@
 %
-% Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-% Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-% Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-% Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+% Copyright (c) The acados authors.
 %
 % This file is part of acados.
 %
@@ -29,7 +26,17 @@
 % CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 % ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.;
-%
+
+
+
+% NOTE: `acados` currently supports both an old MATLAB/Octave interface (< v0.4.0)
+% as well as a new interface (>= v0.4.0).
+
+% THIS EXAMPLE still uses the OLD interface. If you are new to `acados` please start
+% with the examples that have been ported to the new interface already.
+% see https://github.com/acados/acados/issues/1196#issuecomment-2311822122)
+
+
 
 function model = pendulum_on_cart_model_dae()
 
@@ -66,7 +73,7 @@ expr_f_impl = vertcat(v, ...
                       (- l*m*sym_z + F*cos(theta) + g*m*sin(theta) + M*g*sin(theta))/(l*(M + m - m*cos(theta).^2)), ...
                       cos(theta)*sin(theta)*omega.^2) ...
                   - [sym_xdot; sym_z];
-               
+
 %% constraints
 expr_h = sym_u;
 
@@ -83,9 +90,9 @@ model.sym_x = sym_x;
 model.sym_xdot = sym_xdot;
 model.sym_z = sym_z;
 model.sym_u = sym_u;
-model.expr_f_impl = expr_f_impl;
-model.expr_h = expr_h;
-model.expr_ext_cost = expr_ext_cost;
-model.expr_ext_cost_e = expr_ext_cost_e;
+model.dyn_expr_f_impl = expr_f_impl;
+model.constr_expr_h = expr_h;
+model.cost_expr_ext_cost = expr_ext_cost;
+model.cost_expr_ext_cost_e = expr_ext_cost_e;
 
 end

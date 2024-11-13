@@ -1,8 +1,5 @@
 %
-% Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-% Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-% Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-% Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+% Copyright (c) The acados authors.
 %
 % This file is part of acados.
 %
@@ -29,6 +26,7 @@
 % CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 % ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.;
+
 %
 
 %% test of native matlab interface
@@ -41,20 +39,19 @@ for integrator = {'irk_gnsf', 'irk', 'erk'}
 
     %% arguments
     compile_interface = 'auto';
-    codgen_model = 'true';
     sens_forw = 'true';
     jac_reuse = 'true';
-    num_stages = 4;
+    num_stages = 3;
     num_steps = 4;
     newton_iter = 3;
     gnsf_detect_struct = 'true';
 
     Ts = 0.1;
     FD_epsilon = 1e-6;
-    
+
     %% model
-    model = linear_mass_spring_model;
-    
+    model = linear_mass_spring_model();
+
     model_name = ['lin_mass_' method];
     nx = model.nx;
     nu = model.nu;
@@ -80,10 +77,10 @@ for integrator = {'irk_gnsf', 'irk', 'erk'}
 
     if (strcmp(method, 'erk'))
         sim_model.set('dyn_type', 'explicit');
-        sim_model.set('dyn_expr_f', model.expr_f_expl);
+        sim_model.set('dyn_expr_f', model.dyn_expr_f_expl);
     else % irk irk_gnsf
         sim_model.set('dyn_type', 'implicit');
-        sim_model.set('dyn_expr_f', model.expr_f_impl);
+        sim_model.set('dyn_expr_f', model.dyn_expr_f_impl);
         sim_model.set('sym_xdot', model.sym_xdot);
     %	if isfield(model, 'sym_z')
     %		sim_model.set('sym_z', model.sym_z);
@@ -94,7 +91,6 @@ for integrator = {'irk_gnsf', 'irk', 'erk'}
     %% acados sim opts
     sim_opts = acados_sim_opts();
     sim_opts.set('compile_interface', compile_interface);
-    sim_opts.set('codgen_model', codgen_model);
     sim_opts.set('num_stages', num_stages);
     sim_opts.set('num_steps', num_steps);
     sim_opts.set('newton_iter', newton_iter);
@@ -107,29 +103,29 @@ for integrator = {'irk_gnsf', 'irk', 'erk'}
 
     %% acados sim
     % create sim
-    sim = acados_sim(sim_model, sim_opts);
+    sim_solver = acados_sim(sim_model, sim_opts);
 
     % Note: this does not work with gnsf, because it needs to be available
     % in the precomputation phase
-    % 	sim.set('T', Ts);
+    % 	sim_solver.set('T', Ts);
 
     % set initial state
-    sim.set('x', x0);
-    sim.set('u', u);
+    sim_solver.set('x', x0);
+    sim_solver.set('u', u);
 
     % initialize implicit integrator
     if (strcmp(method, 'irk'))
-        sim.set('xdot', zeros(nx,1));
+        sim_solver.set('xdot', zeros(nx,1));
     elseif (strcmp(method, 'irk_gnsf'))
-        n_out = sim.model_struct.dim_gnsf_nout;
-        sim.set('phi_guess', zeros(n_out,1));
+        n_out = sim_solver.sim.dims.gnsf_nout;
+        sim_solver.set('phi_guess', zeros(n_out,1));
     end
 
     % solve
-    sim.solve();
+    sim_solver.solve();
 
-    xn = sim.get('xn');
-    S_forw_ind = sim.get('S_forw');
+    xn = sim_solver.get('xn');
+    S_forw_ind = sim_solver.get('S_forw');
 
     %% compute forward sensitivities using finite differences
     sim_opts.set('sens_forw', 'false');
@@ -141,11 +137,11 @@ for integrator = {'irk_gnsf', 'irk', 'erk'}
         dx = zeros(nx, 1);
         dx(ii) = 1.0;
 
-        sim.set('x', x0+FD_epsilon*dx);
-        sim.set('u', u);
-        sim.solve();
+        sim_solver.set('x', x0+FD_epsilon*dx);
+        sim_solver.set('u', u);
+        sim_solver.solve();
 
-        xn_tmp = sim.get('xn');
+        xn_tmp = sim_solver.get('xn');
         S_forw_fd(:,ii) = (xn_tmp - xn) / FD_epsilon;
     end
 
@@ -153,11 +149,11 @@ for integrator = {'irk_gnsf', 'irk', 'erk'}
         du = zeros(nu, 1);
         du(ii) = 1.0;
 
-        sim.set('x', x0);
-        sim.set('u', u+FD_epsilon*du);
-        sim.solve();
+        sim_solver.set('x', x0);
+        sim_solver.set('u', u+FD_epsilon*du);
+        sim_solver.solve();
 
-        xn_tmp = sim.get('xn');
+        xn_tmp = sim_solver.get('xn');
         S_forw_fd(:,nx+ii) = (xn_tmp - xn) / FD_epsilon;
     end
 
@@ -165,7 +161,7 @@ for integrator = {'irk_gnsf', 'irk', 'erk'}
     error_abs = max(max(abs(S_forw_fd - S_forw_ind)));
     disp(' ')
     disp(['integrator:  ' method]);
-    disp(['error forward sensitivities (wrt forward sens):   ' num2str(error_abs)])
+    disp(['error forward sensitivities (wrt finite differences):   ' num2str(error_abs)])
     disp(' ')
     if error_abs > 1e-6
         disp(['forward sensitivities error too large'])

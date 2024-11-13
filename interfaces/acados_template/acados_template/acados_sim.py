@@ -1,9 +1,6 @@
 # -*- coding: future_fstrings -*-
 #
-# Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-# Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-# Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-# Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+# Copyright (c) The acados authors.
 #
 # This file is part of acados.
 #
@@ -32,75 +29,13 @@
 # POSSIBILITY OF SUCH DAMAGE.;
 #
 
-import numpy as np
-import casadi as ca
 import os
+import numpy as np
 from .acados_model import AcadosModel
-from .utils import get_acados_path
+from .acados_dims import AcadosSimDims
+from .utils import get_acados_path, get_shared_lib_ext
 
-class AcadosSimDims:
-    """
-    Class containing the dimensions of the model to be simulated.
-    """
-    def __init__(self):
-        self.__nx = None
-        self.__nu = None
-        self.__nz = 0
-        self.__np = 0
-
-    @property
-    def nx(self):
-        """:math:`n_x` - number of states. Type: int > 0"""
-        return self.__nx
-
-    @property
-    def nz(self):
-        """:math:`n_z` - number of algebraic variables. Type: int >= 0"""
-        return self.__nz
-
-    @property
-    def nu(self):
-        """:math:`n_u` - number of inputs. Type: int >= 0"""
-        return self.__nu
-
-    @property
-    def np(self):
-        """:math:`n_p` - number of parameters. Type: int >= 0"""
-        return self.__np
-
-    @nx.setter
-    def nx(self, nx):
-        if isinstance(nx, int) and nx > 0:
-            self.__nx = nx
-        else:
-            raise Exception('Invalid nx value, expected positive integer. Exiting.')
-
-    @nz.setter
-    def nz(self, nz):
-        if isinstance(nz, int) and nz > -1:
-            self.__nz = nz
-        else:
-            raise Exception('Invalid nz value, expected nonnegative integer. Exiting.')
-
-    @nu.setter
-    def nu(self, nu):
-        if isinstance(nu, int) and nu > -1:
-            self.__nu = nu
-        else:
-            raise Exception('Invalid nu value, expected nonnegative integer. Exiting.')
-
-    @np.setter
-    def np(self, np):
-        if isinstance(np, int) and np > -1:
-            self.__np = np
-        else:
-            raise Exception('Invalid np value, expected nonnegative integer. Exiting.')
-
-    def set(self, attr, value):
-        setattr(self, attr, value)
-
-
-class AcadosSimOpts:
+class AcadosSimOptions:
     """
     class containing the solver options
     """
@@ -109,16 +44,21 @@ class AcadosSimOpts:
         self.__collocation_type = 'GAUSS_LEGENDRE'
         self.__Tsim = None
         # ints
-        self.__sim_method_num_stages = 1
+        self.__sim_method_num_stages = 4
         self.__sim_method_num_steps = 1
         self.__sim_method_newton_iter = 3
+        # doubles
+        self.__sim_method_newton_tol = 0.0
         # bools
         self.__sens_forw = True
         self.__sens_adj = False
         self.__sens_algebraic = False
         self.__sens_hess = False
-        self.__output_z = False
+        self.__output_z = True
         self.__sim_method_jac_reuse = 0
+        env = os.environ
+        self.__ext_fun_compile_flags = '-O2' if 'ACADOS_EXT_FUN_COMPILE_FLAGS' not in env else env['ACADOS_EXT_FUN_COMPILE_FLAGS']
+        self.__num_threads_in_batch_solve: int = 1
 
     @property
     def integrator_type(self):
@@ -139,6 +79,15 @@ class AcadosSimOpts:
     def newton_iter(self):
         """Number of Newton iterations in simulation method. Default: 3"""
         return self.__sim_method_newton_iter
+
+    @property
+    def newton_tol(self):
+        """
+        Tolerance for Newton system solved in implicit integrator (IRK, GNSF).
+        0.0 means this is not used and exactly newton_iter iterations are carried out.
+        Default: 0.0
+        """
+        return self.__sim_method_newton_tol
 
     @property
     def sens_forw(self):
@@ -162,7 +111,7 @@ class AcadosSimOpts:
 
     @property
     def output_z(self):
-        """Boolean determining if values for algebraic variables (corresponding to start of simulation interval) are computed. Default: False"""
+        """Boolean determining if values for algebraic variables (corresponding to start of simulation interval) are computed. Default: True"""
         return self.__output_z
 
     @property
@@ -178,11 +127,36 @@ class AcadosSimOpts:
     @property
     def collocation_type(self):
         """Collocation type: relevant for implicit integrators
-        -- string in {GAUSS_RADAU_IIA, GAUSS_LEGENDRE}
+        -- string in {'GAUSS_RADAU_IIA', 'GAUSS_LEGENDRE', 'EXPLICIT_RUNGE_KUTTA'}.
 
         Default: GAUSS_LEGENDRE
         """
         return self.__collocation_type
+
+    @property
+    def ext_fun_compile_flags(self):
+        """
+        String with compiler flags for external function compilation.
+        Default: '-O2' if environment variable ACADOS_EXT_FUN_COMPILE_FLAGS is not set, else ACADOS_EXT_FUN_COMPILE_FLAGS is used as default.
+        """
+        return self.__ext_fun_compile_flags
+
+    @property
+    def num_threads_in_batch_solve(self):
+        """
+        Integer indicating how many threads should be used within the batch solve.
+        If more than one thread should be used, the sim solver is compiled with openmp.
+        Default: 1.
+        """
+        return self.__num_threads_in_batch_solve
+
+
+    @ext_fun_compile_flags.setter
+    def ext_fun_compile_flags(self, ext_fun_compile_flags):
+        if isinstance(ext_fun_compile_flags, str):
+            self.__ext_fun_compile_flags = ext_fun_compile_flags
+        else:
+            raise Exception('Invalid ext_fun_compile_flags, expected a string.\n')
 
     @integrator_type.setter
     def integrator_type(self, integrator_type):
@@ -191,7 +165,7 @@ class AcadosSimOpts:
             self.__integrator_type = integrator_type
         else:
             raise Exception('Invalid integrator_type value. Possible values are:\n\n' \
-                    + ',\n'.join(integrator_types) + '.\n\nYou have: ' + integrator_type + '.\n\nExiting.')
+                    + ',\n'.join(integrator_types) + '.\n\nYou have: ' + integrator_type + '.\n\n')
 
     @collocation_type.setter
     def collocation_type(self, collocation_type):
@@ -200,7 +174,7 @@ class AcadosSimOpts:
             self.__collocation_type = collocation_type
         else:
             raise Exception('Invalid collocation_type value. Possible values are:\n\n' \
-                    + ',\n'.join(collocation_types) + '.\n\nYou have: ' + collocation_type + '.\n\nExiting.')
+                    + ',\n'.join(collocation_types) + '.\n\nYou have: ' + collocation_type + '.\n\n')
 
     @T.setter
     def T(self, T):
@@ -226,6 +200,13 @@ class AcadosSimOpts:
             self.__sim_method_newton_iter = newton_iter
         else:
             raise Exception('Invalid newton_iter value. newton_iter must be an integer.')
+
+    @newton_tol.setter
+    def newton_tol(self, newton_tol):
+        if isinstance(newton_tol, float):
+            self.__sim_method_newton_tol = newton_tol
+        else:
+            raise Exception('Invalid newton_tol value. newton_tol must be an float.')
 
     @sens_forw.setter
     def sens_forw(self, sens_forw):
@@ -269,17 +250,25 @@ class AcadosSimOpts:
         else:
             raise Exception('Invalid sim_method_jac_reuse value. sim_method_jac_reuse must be 0 or 1.')
 
+    @num_threads_in_batch_solve.setter
+    def num_threads_in_batch_solve(self, num_threads_in_batch_solve):
+        if isinstance(num_threads_in_batch_solve, int) and num_threads_in_batch_solve > 0:
+            self.__num_threads_in_batch_solve = num_threads_in_batch_solve
+        else:
+            raise Exception('Invalid num_threads_in_batch_solve value. num_threads_in_batch_solve must be a positive integer.')
+
 class AcadosSim:
     """
     The class has the following properties that can be modified to formulate a specific simulation problem, see below:
 
     :param acados_path: string with the path to acados. It is used to generate the include and lib paths.
 
-    - :py:attr:`dims` of type :py:class:`acados_template.acados_ocp.AcadosSimDims` - are automatically detected from model
+    - :py:attr:`dims` of type :py:class:`acados_template.acados_dims.AcadosSimDims` - are automatically detected from model
     - :py:attr:`model` of type :py:class:`acados_template.acados_model.AcadosModel`
-    - :py:attr:`solver_options` of type :py:class:`acados_template.acados_sim.AcadosSimOpts`
+    - :py:attr:`solver_options` of type :py:class:`acados_template.acados_sim.AcadosSimOptions`
 
     - :py:attr:`acados_include_path` (set automatically)
+    - :py:attr:`shared_lib_ext` (set automatically)
     - :py:attr:`acados_lib_path` (set automatically)
     - :py:attr:`parameter_values` - used to initialize the parameters (can be changed)
 
@@ -288,11 +277,11 @@ class AcadosSim:
         if acados_path == '':
             acados_path = get_acados_path()
         self.dims = AcadosSimDims()
-        """Dimension definitions, automatically detected from :py:attr:`model`. Type :py:class:`acados_template.acados_sim.AcadosSimDims`"""
+        """Dimension definitions, automatically detected from :py:attr:`model`. Type :py:class:`acados_template.acados_dims.AcadosSimDims`"""
         self.model = AcadosModel()
         """Model definitions, type :py:class:`acados_template.acados_model.AcadosModel`"""
-        self.solver_options = AcadosSimOpts()
-        """Solver Options, type :py:class:`acados_template.acados_sim.AcadosSimOpts`"""
+        self.solver_options = AcadosSimOptions()
+        """Solver Options, type :py:class:`acados_template.acados_sim.AcadosSimOptions`"""
 
         self.acados_include_path = os.path.join(acados_path, 'include').replace(os.sep, '/') # the replace part is important on Windows for CMake
         """Path to acados include directory (set automatically), type: `string`"""
@@ -301,9 +290,14 @@ class AcadosSim:
 
         self.code_export_directory = 'c_generated_code'
         """Path to where code will be exported. Default: `c_generated_code`."""
+        self.shared_lib_ext = get_shared_lib_ext()
 
-        self.cython_include_dirs = ''
+        # get cython paths
+        from sysconfig import get_paths
+        self.cython_include_dirs = [np.get_include(), get_paths()['include']]
+
         self.__parameter_values = np.array([])
+        self.__problem_class = 'SIM'
 
     @property
     def parameter_values(self):
@@ -318,14 +312,15 @@ class AcadosSim:
             raise Exception('Invalid parameter_values value. ' +
                             f'Expected numpy array, got {type(parameter_values)}.')
 
-    def set(self, attr, value):
-        # tokenize string
-        tokens = attr.split('_', 1)
-        if len(tokens) > 1:
-            setter_to_call = getattr(getattr(self, tokens[0]), 'set')
-        else:
-            setter_to_call = getattr(self, 'set')
+    def make_consistent(self):
+        dims = self.dims
+        model = self.model
+        model.make_consistent(dims)
 
-        setter_to_call(tokens[1], value)
+        if self.parameter_values.shape[0] != dims.np:
+            raise Exception('inconsistent dimension np, regarding model.p and parameter_values.' + \
+                f'\nGot np = {dims.np}, acados_sim.parameter_values.shape = {self.parameter_values.shape[0]}\n')
 
-        return
+        # check required arguments are given
+        if self.solver_options.T is None:
+            raise Exception('acados_sim.solver_options.T is None, should be provided.')

@@ -1,9 +1,6 @@
 #!/bin/bash
 #
-# Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-# Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-# Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-# Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+# Copyright (c) The acados authors.
 #
 # This file is part of acados.
 #
@@ -33,13 +30,13 @@
 #
 
 # CASADI_VERSION='3.5.3'; # Latest version with Octave 4.2.2 binaries
-CASADI_VERSION='3.5.5';
-MATLAB_VERSION='R2014b';
+CASADI_VERSION='3.6.6';
+MATLAB_VERSION='2018b';
 
 _CASADI_GITHUB_RELEASES="https://github.com/casadi/casadi/releases/download/${CASADI_VERSION}";
 
-CASADI_MATLAB_URL="${_CASADI_GITHUB_RELEASES}/casadi-linux-matlab${MATLAB_VERSION}-v${CASADI_VERSION}.tar.gz";
+CASADI_MATLAB_URL="${_CASADI_GITHUB_RELEASES}/casadi-${CASADI_VERSION}-linux64-matlab${MATLAB_VERSION}.zip";
 
-wget -O casadi-linux-matlab.tar.gz "${CASADI_MATLAB_URL}";
+wget -O casadi-linux-matlab.zip "${CASADI_MATLAB_URL}";
 mkdir -p casadi-matlab;
-tar -xf casadi-linux-matlab.tar.gz -C casadi-matlab;
+unzip casadi-linux-matlab.zip -d ./casadi-matlab;

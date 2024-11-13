@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -92,15 +89,8 @@ void *dense_qp_hpipm_opts_assign(void *config_, void *dims_, void *raw_memory)
     return (void *) opts;
 }
 
-
-
-void dense_qp_hpipm_opts_initialize_default(void *config_, void *dims_, void *opts_)
+static void dense_qp_hpipm_opts_overwrite_mode_opts(dense_qp_hpipm_opts *opts)
 {
-    dense_qp_hpipm_opts *opts = opts_;
-
-//    d_dense_qp_ipm_arg_set_default(SPEED_ABS, opts->hpipm_opts);
-//    d_dense_qp_ipm_arg_set_default(SPEED, opts->hpipm_opts);
-    d_dense_qp_ipm_arg_set_default(BALANCE, opts->hpipm_opts);
     // overwrite some default options
     opts->hpipm_opts->res_g_max = 1e-6;
     opts->hpipm_opts->res_b_max = 1e-8;
@@ -110,6 +100,17 @@ void dense_qp_hpipm_opts_initialize_default(void *config_, void *dims_, void *op
     opts->hpipm_opts->stat_max = 50;
     opts->hpipm_opts->alpha_min = 1e-8;
     opts->hpipm_opts->mu0 = 1e0;
+}
+
+
+void dense_qp_hpipm_opts_initialize_default(void *config_, void *dims_, void *opts_)
+{
+    dense_qp_hpipm_opts *opts = opts_;
+
+    d_dense_qp_ipm_arg_set_default(BALANCE, opts->hpipm_opts);
+    dense_qp_hpipm_opts_overwrite_mode_opts(opts);
+
+    opts->print_level = 0;
 
     return;
 }
@@ -124,12 +125,36 @@ void dense_qp_hpipm_opts_update(void *config_, void *dims_, void *opts_)
 }
 
 
-
 void dense_qp_hpipm_opts_set(void *config_, void *opts_, const char *field, void *value)
 {
     dense_qp_hpipm_opts *opts = opts_;
 
-    d_dense_qp_ipm_arg_set((char *) field, value, opts->hpipm_opts);
+    const char *mode;
+    if (!strcmp(field, "hpipm_mode"))
+    {
+        mode = (const char *) value;
+        if (!strcmp(mode, "BALANCE"))
+            d_dense_qp_ipm_arg_set_default(BALANCE, opts->hpipm_opts);
+        else if (!strcmp(mode, "SPEED"))
+            d_dense_qp_ipm_arg_set_default(SPEED, opts->hpipm_opts);
+        else if (!strcmp(mode, "SPEED_ABS"))
+            d_dense_qp_ipm_arg_set_default(SPEED_ABS, opts->hpipm_opts);
+        else if (!strcmp(mode, "ROBUST"))
+            d_dense_qp_ipm_arg_set_default(ROBUST, opts->hpipm_opts);
+
+        dense_qp_hpipm_opts_overwrite_mode_opts(opts);
+
+    }
+    else if (!strcmp(field, "print_level"))
+    {
+        int* print_level = (int *) value;
+        opts->print_level = *print_level;
+    }
+    else
+    {
+        d_dense_qp_ipm_arg_set((char *) field, value, opts->hpipm_opts);
+    }
+
 
     return;
 }
@@ -264,6 +289,17 @@ int dense_qp_hpipm(void *config, void *qp_in_, void *qp_out_, void *opts_, void 
     mem->time_qp_solver_call = info->solve_QP_time;
     mem->iter = mem->hpipm_workspace->iter;
 
+#ifndef BLASFEO_EXT_DEP_OFF
+    // print HPIPM statistics:
+    if (opts->print_level > 0)
+    {
+        double *stat; d_dense_qp_ipm_get_stat(mem->hpipm_workspace, &stat);
+        int stat_m; d_dense_qp_ipm_get_stat_m(mem->hpipm_workspace, &stat_m);
+        printf("\nalpha_aff\tmu_aff\t\tsigma\t\talpha_prim\talpha_dual\tmu\t\tres_stat\tres_eq\t\tres_ineq\tres_comp\tobj\t\tlq fact\t\titref pred\titref corr\tlin res stat\tlin res eq\tlin res ineq\tlin res comp\n");
+        d_print_exp_tran_mat(stat_m, mem->iter+1, stat, stat_m);
+    }
+#endif
+
     // check exit conditions
     int acados_status = hpipm_status;
     if (hpipm_status == 0) acados_status = ACADOS_SUCCESS;
@@ -304,6 +340,24 @@ void dense_qp_hpipm_eval_sens(void *config_, void *param_qp_in_, void *sens_qp_o
 }
 
 
+void dense_qp_hpipm_memory_reset(void *config, void *qp_in, void *qp_out, void *opts, void *mem, void *work)
+{
+    printf("\nerror: dense_qp_hpipm_memory_reset: not implemented yet\n");
+    exit(1);
+}
+
+void dense_qp_hpipm_solver_get(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *mem_, const char *field, int stage, void* value, int size1, int size2)
+{
+    printf("\nerror: dense_qp_hpipm_solver_get: not implemented yet\n");
+    exit(1);
+}
+
+
+void dense_qp_hpipm_terminate(void *config_, void *mem_, void *work_)
+{
+    return;
+}
+
 
 void dense_qp_hpipm_config_initialize_default(void *config_)
 {
@@ -321,6 +375,9 @@ void dense_qp_hpipm_config_initialize_default(void *config_)
     config->workspace_calculate_size = &dense_qp_hpipm_workspace_calculate_size;
     config->evaluate = &dense_qp_hpipm;
     config->eval_sens = &dense_qp_hpipm_eval_sens;
+    config->memory_reset = &dense_qp_hpipm_memory_reset;
+    config->solver_get = &dense_qp_hpipm_solver_get;
+    config->terminate = &dense_qp_hpipm_terminate;
 
     return;
 }

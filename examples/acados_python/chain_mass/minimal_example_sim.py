@@ -1,8 +1,5 @@
 #
-# Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-# Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-# Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-# Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+# Copyright (c) The acados authors.
 #
 # This file is part of acados.
 #
@@ -33,7 +30,7 @@
 
 # authors: Florian Messerer, Jonathan Frey
 
-import sys, os
+import os
 import numpy as np
 
 from acados_template import AcadosSim, AcadosSimSolver
@@ -59,7 +56,7 @@ m = chain_params["m"]
 D = chain_params["D"]
 L = chain_params["L"]
 
-# export model 
+# export model
 model = export_chain_mass_model(n_mass, m, D, L)
 
 
@@ -67,8 +64,8 @@ model = export_chain_mass_model(n_mass, m, D, L)
 sim.model = model
 
 Tf = 0.1
-nx = model.x.size()[0]
-nu = model.u.size()[0]
+nx = model.x.rows()
+nu = model.u.rows()
 N = 200
 
 # set simulation time
@@ -76,12 +73,13 @@ sim.solver_options.T = Tf
 # set options
 sim.solver_options.num_stages = 4
 sim.solver_options.num_steps = 3
+sim.solver_options.integrator_type = 'GNSF'
 sim.solver_options.newton_iter = 3 # for implicit integrator
 
 # create
 acados_integrator = AcadosSimSolver(sim)
 
-simX = np.ndarray((N+1, nx))
+simX = np.zeros((N+1, nx))
 
 # position of last mass
 xPosFirstMass = np.zeros((3,1))
@@ -91,7 +89,6 @@ xEndRef[0] = L * (M+1) * 6
 pos0_x = np.linspace(xPosFirstMass[0], xEndRef[0], n_mass)
 x0 = np.zeros((nx, 1))
 x0[:3*(M+1):3] = pos0_x[1:].reshape((M+1,1))
-    
 
 u0 = np.zeros((nu, 1))
 acados_integrator.set("u", u0)
@@ -107,7 +104,7 @@ for i in range(N):
     simX[i+1,:] = acados_integrator.get("x")
 
 if status != 0:
-    raise Exception('acados returned status {}. Exiting.'.format(status))
+    raise Exception(f'acados returned status {status}.')
 
 plot_chain_position_traj(simX)
 
@@ -115,7 +112,7 @@ plot_chain_position_traj(simX)
 
 xrest = compute_steady_state(n_mass, m, D, L, xPosFirstMass, xEndRef)
 
-if os.environ.get('ACADOS_ON_TRAVIS') is None:
+if os.environ.get('ACADOS_ON_CI') is None:
 
     plot_chain_position(xrest, xPosFirstMass)
 

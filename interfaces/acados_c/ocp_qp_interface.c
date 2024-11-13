@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -55,6 +52,10 @@
 #include "acados/dense_qp/dense_qp_qpoases.h"
 #endif
 
+#ifdef ACADOS_WITH_DAQP
+#include "acados/dense_qp/dense_qp_daqp.h"
+#endif
+
 #include "acados/ocp_qp/ocp_qp_hpipm.h"
 #ifdef ACADOS_WITH_HPMPC
 #include "acados/ocp_qp/ocp_qp_hpmpc.h"
@@ -82,63 +83,70 @@ void ocp_qp_xcond_solver_config_initialize_from_plan(
     switch (solver_name)
     {
         case PARTIAL_CONDENSING_HPIPM:
-			ocp_qp_xcond_solver_config_initialize_default(solver_config);
+            ocp_qp_xcond_solver_config_initialize_default(solver_config);
             ocp_qp_hpipm_config_initialize_default(solver_config->qp_solver);
-			ocp_qp_partial_condensing_config_initialize_default(solver_config->xcond);
+            ocp_qp_partial_condensing_config_initialize_default(solver_config->xcond);
             break;
 #ifdef ACADOS_WITH_HPMPC
         case PARTIAL_CONDENSING_HPMPC:
-			ocp_qp_xcond_solver_config_initialize_default(solver_config);
+            ocp_qp_xcond_solver_config_initialize_default(solver_config);
             ocp_qp_hpmpc_config_initialize_default(solver_config->qp_solver);
-			ocp_qp_partial_condensing_config_initialize_default(solver_config->xcond);
+            ocp_qp_partial_condensing_config_initialize_default(solver_config->xcond);
             break;
 #endif
 #ifdef ACADOS_WITH_OOQP
         case PARTIAL_CONDENSING_OOQP:
-			ocp_qp_xcond_solver_config_initialize_default(solver_config);
+            ocp_qp_xcond_solver_config_initialize_default(solver_config);
             ocp_qp_ooqp_config_initialize_default(solver_config->qp_solver);
-			ocp_qp_partial_condensing_config_initialize_default(solver_config->xcond);
+            ocp_qp_partial_condensing_config_initialize_default(solver_config->xcond);
             break;
 #endif
 #ifdef ACADOS_WITH_OSQP
         case PARTIAL_CONDENSING_OSQP:
-			ocp_qp_xcond_solver_config_initialize_default(solver_config);
+            ocp_qp_xcond_solver_config_initialize_default(solver_config);
             ocp_qp_osqp_config_initialize_default(solver_config->qp_solver);
-			ocp_qp_partial_condensing_config_initialize_default(solver_config->xcond);
+            ocp_qp_partial_condensing_config_initialize_default(solver_config->xcond);
             break;
 #endif
 #ifdef ACADOS_WITH_QPDUNES
         case PARTIAL_CONDENSING_QPDUNES:
-			ocp_qp_xcond_solver_config_initialize_default(solver_config);
+            ocp_qp_xcond_solver_config_initialize_default(solver_config);
             ocp_qp_qpdunes_config_initialize_default(solver_config->qp_solver);
-			ocp_qp_partial_condensing_config_initialize_default(solver_config->xcond);
+            ocp_qp_partial_condensing_config_initialize_default(solver_config->xcond);
             break;
 #endif
         case FULL_CONDENSING_HPIPM:
-			ocp_qp_xcond_solver_config_initialize_default(solver_config);
+            ocp_qp_xcond_solver_config_initialize_default(solver_config);
             dense_qp_hpipm_config_initialize_default(solver_config->qp_solver);
-			ocp_qp_full_condensing_config_initialize_default(solver_config->xcond);
+            ocp_qp_full_condensing_config_initialize_default(solver_config->xcond);
             break;
 #ifdef ACADOS_WITH_QPOASES
         case FULL_CONDENSING_QPOASES:
-			ocp_qp_xcond_solver_config_initialize_default(solver_config);
+            ocp_qp_xcond_solver_config_initialize_default(solver_config);
             dense_qp_qpoases_config_initialize_default(solver_config->qp_solver);
-			ocp_qp_full_condensing_config_initialize_default(solver_config->xcond);
+            ocp_qp_full_condensing_config_initialize_default(solver_config->xcond);
+            break;
+#endif
+#ifdef ACADOS_WITH_DAQP
+        case FULL_CONDENSING_DAQP:
+            ocp_qp_xcond_solver_config_initialize_default(solver_config);
+            dense_qp_daqp_config_initialize_default(solver_config->qp_solver);
+            ocp_qp_full_condensing_config_initialize_default(solver_config->xcond);
             break;
 #endif
 #ifdef ACADOS_WITH_QORE
         case FULL_CONDENSING_QORE:
-			ocp_qp_xcond_solver_config_initialize_default(solver_config);
+            ocp_qp_xcond_solver_config_initialize_default(solver_config);
             dense_qp_qore_config_initialize_default(solver_config->qp_solver);
-			ocp_qp_full_condensing_config_initialize_default(solver_config->xcond);
+            ocp_qp_full_condensing_config_initialize_default(solver_config->xcond);
             break;
 #endif
 #ifdef ACADOS_WITH_OOQP
         case FULL_CONDENSING_OOQP:
             printf("\nocp_qp_xcond_solver: FULL_CONDENSING_OOQP.\n");
-			ocp_qp_xcond_solver_config_initialize_default(solver_config);
+            ocp_qp_xcond_solver_config_initialize_default(solver_config);
             dense_qp_ooqp_config_initialize_default(solver_config->qp_solver);
-			ocp_qp_full_condensing_config_initialize_default(solver_config->xcond);
+            ocp_qp_full_condensing_config_initialize_default(solver_config->xcond);
             break;
 #endif
         case INVALID_QP_SOLVER:
@@ -151,7 +159,7 @@ void ocp_qp_xcond_solver_config_initialize_from_plan(
             exit(1);
     }
 
-	return;
+    return;
 }
 
 
@@ -380,8 +388,6 @@ ocp_qp_solver *ocp_qp_assign(ocp_qp_xcond_solver_config *config, ocp_qp_xcond_so
     solver->config = config;
     solver->dims = dims;
     solver->opts = opts_;
-
-    // TODO(dimitris): CHECK ALIGNMENT!
 
     solver->mem = config->memory_assign(config, dims, opts_, c_ptr);
     c_ptr += config->memory_calculate_size(config, dims, opts_);

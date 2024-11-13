@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -76,10 +73,6 @@ acados_size_t ocp_nlp_dynamics_cont_dims_calculate_size(void *config);
 //
 void *ocp_nlp_dynamics_cont_dims_assign(void *config, void *raw_memory);
 //
-void ocp_nlp_dynamics_cont_dims_initialize(void *config, void *dims, int nx, int nu, int nx1,
-                                           int nu1, int nz);
-
-//
 void ocp_nlp_dynamics_cont_dims_set(void *config_, void *dims_, const char *field, int* value);
 
 /************************************************
@@ -115,11 +108,8 @@ typedef struct
     struct blasfeo_dvec fun;
     struct blasfeo_dvec adj;
     struct blasfeo_dvec *ux;            // pointer to ux in nlp_out at current stage
-    struct blasfeo_dvec *tmp_ux;        // pointer to ux in tmp_nlp_out at current stage
     struct blasfeo_dvec *ux1;           // pointer to ux in nlp_out at next stage
-    struct blasfeo_dvec *tmp_ux1;       // pointer to ux in tmp_nlp_out at next stage
     struct blasfeo_dvec *pi;            // pointer to pi in nlp_out at current stage
-    struct blasfeo_dvec *tmp_pi;        // pointer to pi in tmp_nlp_out at current stage
     struct blasfeo_dmat *BAbt;          // pointer to BAbt in qp_in
     struct blasfeo_dmat *RSQrq;         // pointer to RSQrq in qp_in
     struct blasfeo_dvec *z_alg;         // pointer to output z at t = 0
@@ -128,6 +118,9 @@ typedef struct
     // struct blasfeo_dvec *z;             // pointer to (input) z in nlp_out at current stage
     struct blasfeo_dmat *dzduxt;        // pointer to dzdux transposed
     void *sim_solver;                   // sim solver memory
+    acados_size_t workspace_size;
+    acados_size_t sim_workspace_size;
+
 } ocp_nlp_dynamics_cont_memory;
 
 //
@@ -141,17 +134,13 @@ struct blasfeo_dvec *ocp_nlp_dynamics_cont_memory_get_adj_ptr(void *memory);
 //
 void ocp_nlp_dynamics_cont_memory_set_ux_ptr(struct blasfeo_dvec *ux, void *memory);
 //
-void ocp_nlp_dynamics_cont_memory_set_tmp_ux_ptr(struct blasfeo_dvec *tmp_ux, void *memory);
-//
 void ocp_nlp_dynamics_cont_memory_set_ux1_ptr(struct blasfeo_dvec *ux1, void *memory);
-//
-void ocp_nlp_dynamics_cont_memory_set_tmp_ux1_ptr(struct blasfeo_dvec *tmp_ux1, void *memory);
 //
 void ocp_nlp_dynamics_cont_memory_set_pi_ptr(struct blasfeo_dvec *pi, void *memory);
 //
-void ocp_nlp_dynamics_cont_memory_set_tmp_pi_ptr(struct blasfeo_dvec *tmp_pi, void *memory);
-//
 void ocp_nlp_dynamics_cont_memory_set_BAbt_ptr(struct blasfeo_dmat *BAbt, void *memory);
+//
+void ocp_nlp_dynamics_cont_memory_get_params_lag_grad(void *config, void *dims, void *opts, void *memory, int index, struct blasfeo_dvec *out, int offset);
 
 
 
@@ -196,7 +185,7 @@ void ocp_nlp_dynamics_cont_model_set(void *config_, void *dims_, void *model_, c
  ************************************************/
 
 //
-void ocp_nlp_dynamics_cont_config_initialize_default(void *config);
+void ocp_nlp_dynamics_cont_config_initialize_default(void *config, int stage);
 //
 void ocp_nlp_dynamics_cont_initialize(void *config_, void *dims, void *model_, void *opts, void *mem, void *work_);
 //
@@ -204,8 +193,13 @@ void ocp_nlp_dynamics_cont_update_qp_matrices(void *config_, void *dims, void *m
 //
 void ocp_nlp_dynamics_cont_compute_fun(void *config_, void *dims, void *model_, void *opts, void *mem, void *work_);
 //
+void ocp_nlp_dynamics_cont_compute_fun_and_adj(void *config_, void *dims, void *model_, void *opts, void *mem, void *work_);
+//
 int ocp_nlp_dynamics_cont_precompute(void *config_, void *dims, void *model_, void *opts_, void *mem_, void *work_);
-
+//
+void ocp_nlp_dynamics_cont_compute_jac_hess_p(void *config_, void *dims, void *model_, void *opts, void *mem, void *work_);
+//
+void ocp_nlp_dynamics_cont_compute_adj_p(void* config_, void *dims_, void *model_, void *opts_, void *mem_, struct blasfeo_dvec *out);
 
 #ifdef __cplusplus
 } /* extern "C" */

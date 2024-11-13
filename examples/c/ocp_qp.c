@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -58,7 +55,7 @@ int main() {
     ocp_qp_solver_plan_t plan;
     plan.qp_solver = FULL_CONDENSING_HPIPM; //FULL_CONDENSING_QPOASES; // FULL_CONDENSING_QPOASES, FULL_CONDENSING_HPIPM
     // PARTIAL_CONDENSING_HPIPM, PARTIAL_CONDENSING_HPMPC, PARTIAL_CONDENSING_OOQP,
-    //  PARTIAL_CONDENSING_OSQP, PARTIAL_CONDENSING_QPDUNES, FULL_CONDENSING_QORE, FULL_CONDENSING_OOQP,
+    //  PARTIAL_CONDENSING_OSQP, PARTIAL_CONDENSING_QPDUNES, FULL_CONDENSING_QORE, FULL_CONDENSING_OOQP, FULL_CONDENSING_DAQP
 
     ocp_qp_xcond_solver_config *config = ocp_qp_xcond_solver_config_create(plan);
 

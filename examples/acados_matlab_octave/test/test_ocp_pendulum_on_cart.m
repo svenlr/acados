@@ -1,8 +1,5 @@
 %
-% Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-% Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-% Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-% Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+% Copyright (c) The acados authors.
 %
 % This file is part of acados.
 %
@@ -29,6 +26,7 @@
 % CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 % ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.;
+
 %
 
 %% test of native matlab interface
@@ -39,7 +37,6 @@ addpath('../pendulum_on_cart_model/');
 for itest = 1:3
     %% arguments
     compile_interface = 'auto';
-    codgen_model = 'true';
     gnsf_detect_struct = 'true';
 
     % discretization
@@ -87,7 +84,7 @@ for itest = 1:3
     model_name = ['pendulum_' num2str(itest)];
 
     %% create model entries
-    model = pendulum_on_cart_model;
+    model = pendulum_on_cart_model();
 
     % dims
     T = N*h; % horizon length time
@@ -146,28 +143,29 @@ for itest = 1:3
         ocp_model.set('cost_y_ref', yr);
         ocp_model.set('cost_y_ref_e', yr_e);
     else % if (strcmp(cost_type, 'ext_cost'))
-        ocp_model.set('cost_expr_ext_cost', model.expr_ext_cost);
-        ocp_model.set('cost_expr_ext_cost_e', model.expr_ext_cost_e);
+        ocp_model.set('cost_expr_ext_cost', model.cost_expr_ext_cost);
+        ocp_model.set('cost_expr_ext_cost_e', model.cost_expr_ext_cost_e);
     end
     % dynamics
     if (strcmp(sim_method, 'erk'))
         ocp_model.set('dyn_type', 'explicit');
-        ocp_model.set('dyn_expr_f', model.expr_f_expl);
+        ocp_model.set('dyn_expr_f', model.dyn_expr_f_expl);
     else % irk irk_gnsf
         ocp_model.set('dyn_type', 'implicit');
-        ocp_model.set('dyn_expr_f', model.expr_f_impl);
+        ocp_model.set('dyn_expr_f', model.dyn_expr_f_impl);
     end
 
     %% constraints
     ocp_model.set('constr_x0', x0);
     if itest == 1
-        nh = nu;
         ng = 0;
-        ocp_model.set('constr_expr_h', model.expr_h);
+        ocp_model.set('constr_expr_h', model.constr_expr_h);
         ocp_model.set('constr_lh', lbu);
         ocp_model.set('constr_uh', ubu);
+        ocp_model.set('constr_expr_h_0', model.constr_expr_h);
+        ocp_model.set('constr_lh_0', lbu);
+        ocp_model.set('constr_uh_0', ubu);
     elseif itest == 2
-        nh = 0;
         ng = 1;
         C = zeros(ng, nx);
         D = zeros(ng, nu);
@@ -181,7 +179,10 @@ for itest = 1:3
     elseif itest == 3
         ng = 0;
         ocp_model.set('constr_type', 'auto');
-        ocp_model.set('constr_expr_h', model.expr_h);
+        ocp_model.set('constr_expr_h_0', model.constr_expr_h);
+        ocp_model.set('constr_lh_0', lbu);
+        ocp_model.set('constr_uh_0', ubu);
+        ocp_model.set('constr_expr_h', model.constr_expr_h);
         ocp_model.set('constr_lh', lbu);
         ocp_model.set('constr_uh', ubu);
 %         ocp_model.set('constr_type_e', 'auto');
@@ -193,7 +194,6 @@ for itest = 1:3
     %% acados ocp opts
     ocp_opts = acados_ocp_opts();
     ocp_opts.set('compile_interface', compile_interface);
-    ocp_opts.set('codgen_model', codgen_model);
     ocp_opts.set('param_scheme_N', N);
     ocp_opts.set('nlp_solver', nlp_solver);
     ocp_opts.set('nlp_solver_exact_hessian', nlp_solver_exact_hessian);
@@ -221,11 +221,11 @@ for itest = 1:3
     if (strcmp(sim_method, 'irk_gnsf'))
         ocp_opts.set('gnsf_detect_struct', gnsf_detect_struct);
     end
-
+    ocp_opts.set('ext_fun_compile_flags', '');
 
     %% acados ocp
     % create ocp
-    ocp = acados_ocp(ocp_model, ocp_opts);
+    ocp_solver = acados_ocp(ocp_model, ocp_opts);
 
     % set trajectory initialization
     %x_traj_init = zeros(nx, N+1);
@@ -233,49 +233,49 @@ for itest = 1:3
     x_traj_init = [linspace(0, 0, N+1); linspace(pi, 0, N+1); linspace(0, 0, N+1); linspace(0, 0, N+1)];
 
     u_traj_init = zeros(nu, N);
-    ocp.set('init_x', x_traj_init);
-    ocp.set('init_u', u_traj_init);
+    ocp_solver.set('init_x', x_traj_init);
+    ocp_solver.set('init_u', u_traj_init);
 
     % change number of sqp iterations
-    ocp.set('nlp_solver_max_iter', 20);
+    ocp_solver.set('nlp_solver_max_iter', 20);
 
     % modify numerical data for a certain stage
     some_stages = 1:10:N-1;
     for i = some_stages
         if (strcmp(cost_type, 'linear_ls'))
-            ocp.set('cost_Vx', Vx, i); % cost_y_ref, cost_Vu, cost_Vx, cost_W, cost_Z, cost_Zl,...
+            ocp_solver.set('cost_Vx', Vx, i); % cost_y_ref, cost_Vu, cost_Vx, cost_W, cost_Z, cost_Zl,...
              % cost_Zu, cost_z, cost_zl, cost_zu;
-            ocp.set('cost_Vu', Vu, i);
-            ocp.set('cost_y_ref', yr, i);
+            ocp_solver.set('cost_Vu', Vu, i);
+            ocp_solver.set('cost_y_ref', yr, i);
         end
         if ng > 0
-            ocp.set('constr_C', C, i);
-            ocp.set('constr_D', D, i);
-            ocp.set('constr_ug', ubu, i);
-            ocp.set('constr_lg', lbu, i);
+            ocp_solver.set('constr_C', C, i);
+            ocp_solver.set('constr_D', D, i);
+            ocp_solver.set('constr_ug', ubu, i);
+            ocp_solver.set('constr_lg', lbu, i);
         end
     end
 
     % solve
     tic;
-    ocp.solve();
+    ocp_solver.solve();
     time_ext=toc;
     % get solution
-    utraj = ocp.get('u');
-    xtraj = ocp.get('x');
+    utraj = ocp_solver.get('u');
+    xtraj = ocp_solver.get('x');
 
     %% evaluation
-    status = ocp.get('status');
-    sqp_iter = ocp.get('sqp_iter');
-    time_tot = ocp.get('time_tot');
-    time_lin = ocp.get('time_lin');
-    time_reg = ocp.get('time_reg');
-    time_qp_sol = ocp.get('time_qp_sol');
+    status = ocp_solver.get('status');
+    sqp_iter = ocp_solver.get('sqp_iter');
+    time_tot = ocp_solver.get('time_tot');
+    time_lin = ocp_solver.get('time_lin');
+    time_reg = ocp_solver.get('time_reg');
+    time_qp_sol = ocp_solver.get('time_qp_sol');
 
     fprintf('\nstatus = %d, sqp_iter = %d, time_ext = %f [ms], time_int = %f [ms] (time_lin = %f [ms], time_qp_sol = %f [ms], time_reg = %f [ms])\n', status, sqp_iter, time_ext*1e3, time_tot*1e3, time_lin*1e3, time_qp_sol*1e3, time_reg*1e3);
 
-    stat = ocp.get('stat');
-    ocp.print('stat')
+    stat = ocp_solver.get('stat');
+    ocp_solver.print('stat')
 
     if itest == 1
         utraj_ref = utraj;

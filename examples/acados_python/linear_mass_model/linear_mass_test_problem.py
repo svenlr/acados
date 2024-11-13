@@ -1,8 +1,5 @@
 #
-# Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-# Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-# Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-# Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+# Copyright (c) The acados authors.
 #
 # This file is part of acados.
 #
@@ -45,32 +42,40 @@ INITIALIZE = True
 PLOT = False
 OBSTACLE_POWER = 2
 
-# an OCP to test Marathos effect an second order correction
+# an OCP to test Maratos effect an second order correction
 
 def main():
     # run test cases
 
     # all setting
-    params = {'globalization': ['FIXED_STEP', 'MERIT_BACKTRACKING'], # MERIT_BACKTRACKING, FIXED_STEP
-              'line_search_use_sufficient_descent' : [0, 1],
+    params = {'globalization': ['FIXED_STEP', 'MERIT_BACKTRACKING', 'FUNNEL_L1PEN_LINESEARCH'], # MERIT_BACKTRACKING, FIXED_STEP
+              'globalization_line_search_use_sufficient_descent' : [0, 1],
               'qp_solver' : ['FULL_CONDENSING_HPIPM', 'PARTIAL_CONDENSING_HPIPM', 'FULL_CONDENSING_QPOASES'],
               'globalization_use_SOC' : [0, 1] }
 
     keys, values = zip(*params.items())
     for combination in product(*values):
         setting = dict(zip(keys, combination))
-        if setting['globalization'] == 'FIXED_STEP' and \
-          (setting['globalization_use_SOC'] or setting['line_search_use_sufficient_descent']):
+        if (setting['globalization'] == 'FIXED_STEP' or setting['globalization'] == 'FUNNEL_L1PEN_LINESEARCH') and \
+          (setting['globalization_use_SOC'] or setting['globalization_line_search_use_sufficient_descent']):
             # skip some equivalent settings
             pass
         else:
-            solve_marathos_ocp(setting)
+            solve_maratos_ocp(setting)
+
+    setting = {}
+    setting['globalization'] = 'MERIT_BACKTRACKING'
+    setting['globalization_use_SOC'] = 0
+    setting['qp_solver'] = 'PARTIAL_CONDENSING_HPIPM'
+    setting['globalization_line_search_use_sufficient_descent'] = 1
+    print("Use deprecated options!")
+    solve_maratos_ocp(setting, use_deprecated_options=True)
 
 
-def solve_marathos_ocp(setting):
+def solve_maratos_ocp(setting, use_deprecated_options=False):
 
     globalization = setting['globalization']
-    line_search_use_sufficient_descent = setting['line_search_use_sufficient_descent']
+    globalization_line_search_use_sufficient_descent = setting['globalization_line_search_use_sufficient_descent']
     globalization_use_SOC = setting['globalization_use_SOC']
     qp_solver = setting['qp_solver']
 
@@ -81,15 +86,15 @@ def solve_marathos_ocp(setting):
     model = export_linear_mass_model()
     ocp.model = model
 
-    nx = model.x.size()[0]
-    nu = model.u.size()[0]
+    nx = model.x.rows()
+    nu = model.u.rows()
     ny = nu
 
     # discretization
     Tf = 2
     N = 20
     shooting_nodes = np.linspace(0, Tf, N+1)
-    ocp.dims.N = N
+    ocp.solver_options.N_horizon = N
 
     # set cost
     Q = 2*np.diag([])
@@ -130,7 +135,7 @@ def solve_marathos_ocp(setting):
 
     # add obstacle
     if OBSTACLE:
-        obs_rad = 1.0; obs_x = 0.0; obs_y = 0.0;
+        obs_rad = 1.0; obs_x = 0.0; obs_y = 0.0
         circle = (obs_x, obs_y, obs_rad)
         ocp.constraints.uh = np.array([100.0]) # doenst matter
         ocp.constraints.lh = np.array([obs_rad**2])
@@ -167,8 +172,14 @@ def solve_marathos_ocp(setting):
     # ocp.solver_options.print_level = 1
     ocp.solver_options.nlp_solver_type = 'SQP' # SQP_RTI, SQP
     ocp.solver_options.globalization = globalization
-    ocp.solver_options.alpha_min = 0.01
-    # ocp.solver_options.__initialize_t_slacks = 0
+    if use_deprecated_options:
+        ocp.solver_options.alpha_min = 0.01
+        ocp.solver_options.globalization_use_SOC = setting['globalization_use_SOC']
+        ocp.solver_options.full_step_dual = 1
+        ocp.solver_options.eps_sufficient_descent = 1e-4
+        ocp.solver_options.line_search_use_sufficient_descent = setting['globalization_line_search_use_sufficient_descent']
+    else:
+        ocp.solver_options.globalization_alpha_min = 0.01
     # ocp.solver_options.levenberg_marquardt = 1e-2
     ocp.solver_options.qp_solver_cond_N = 0
     ocp.solver_options.print_level = 1
@@ -180,14 +191,28 @@ def solve_marathos_ocp(setting):
     ocp.solver_options.qp_solver_tol_eq = qp_tol
     ocp.solver_options.qp_solver_tol_ineq = qp_tol
     ocp.solver_options.qp_solver_tol_comp = qp_tol
+    ocp.solver_options.qp_solver_ric_alg = 1
+    # ocp.solver_options.qp_solver_cond_ric_alg = 1
 
     # set prediction horizon
     ocp.solver_options.tf = Tf
 
     ocp_solver = AcadosOcpSolver(ocp, json_file=f'{model.name}_ocp.json')
-    ocp_solver.options_set('line_search_use_sufficient_descent', line_search_use_sufficient_descent)
-    ocp_solver.options_set('globalization_use_SOC', globalization_use_SOC)
-    ocp_solver.options_set('full_step_dual', 1)
+
+    if globalization == "FUNNEL_L1PEN_LINESEARCH":
+        # Test the options setters
+        ocp_solver.options_set('globalization_funnel_init_increase_factor', 15.0)
+        ocp_solver.options_set('globalization_funnel_init_upper_bound', 1.0)
+        ocp_solver.options_set('globalization_funnel_sufficient_decrease_factor', 0.9)
+        ocp_solver.options_set('globalization_funnel_kappa', 0.9)
+        ocp_solver.options_set('globalization_funnel_fraction_switching_condition', 1e-3)
+        ocp_solver.options_set('globalization_funnel_initial_penalty_parameter', 1.0)
+    if not use_deprecated_options:
+        ocp_solver.options_set('globalization_line_search_use_sufficient_descent', globalization_line_search_use_sufficient_descent)
+        ocp_solver.options_set('globalization_use_SOC', globalization_use_SOC)
+        ocp_solver.options_set('globalization_full_step_dual', 1)
+    else:
+        ocp
 
     if INITIALIZE:# initialize solver
         # [ocp_solver.set(i, "x", x0 + (i/N) * (x_goal-x0)) for i in range(N+1)]
@@ -197,7 +222,7 @@ def solve_marathos_ocp(setting):
     # solve
     status = ocp_solver.solve()
     ocp_solver.print_statistics() # encapsulates: stat = ocp_solver.get_stats("statistics")
-    sqp_iter = ocp_solver.get_stats('sqp_iter')[0]
+    sqp_iter = ocp_solver.get_stats('sqp_iter')
     print(f'acados returned status {status}.')
 
     # ocp_solver.store_iterate(f'it{ocp.solver_options.nlp_solver_max_iter}_{model.name}.json')
@@ -210,7 +235,7 @@ def solve_marathos_ocp(setting):
 
 
     # print summary
-    print(f"solved Marathos test problem with settings {setting}")
+    print(f"solved Maratos test problem with settings {setting}")
     print(f"cost function value = {ocp_solver.get_cost()} after {sqp_iter} SQP iterations")
     # print(f"alphas: {alphas[:iter]}")
     # print(f"total number of QP iterations: {sum(qp_iters[:iter])}")
@@ -223,15 +248,9 @@ def solve_marathos_ocp(setting):
     if globalization == "FIXED_STEP":
         if sqp_iter != 18:
             raise Exception(f"acados solver took {sqp_iter} iterations, expected 18.")
-    elif globalization == "MERIT_BACKTRACKING":
-        if globalization_use_SOC == 1 and line_search_use_sufficient_descent == 0 and sqp_iter not in range(21, 23):
-            raise Exception(f"acados solver took {sqp_iter} iterations, expected range(21, 23).")
-        elif globalization_use_SOC == 1 and line_search_use_sufficient_descent == 1 and sqp_iter not in range(21, 24):
-            raise Exception(f"acados solver took {sqp_iter} iterations, expected range(21, 24).")
-        elif globalization_use_SOC == 0 and line_search_use_sufficient_descent == 0 and sqp_iter not in range(155, 165):
-            raise Exception(f"acados solver took {sqp_iter} iterations, expected range(155, 165).")
-        elif globalization_use_SOC == 0 and line_search_use_sufficient_descent == 1 and sqp_iter not in range(160, 175):
-            raise Exception(f"acados solver took {sqp_iter} iterations, expected range(160, 175).")
+    elif globalization == "MERIT_BACKTRACKING" and not use_deprecated_options:
+        if sqp_iter not in range(17, 23):
+            raise Exception(f"acados solver took {sqp_iter} iterations, expected range(17, 23).")
 
     if PLOT:
         plot_linear_mass_system_X_state_space(simX, circle=circle, x_goal=x_goal)

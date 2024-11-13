@@ -1,8 +1,5 @@
 %
-% Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-% Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-% Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-% Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+% Copyright (c) The acados authors.
 %
 % This file is part of acados.
 %
@@ -31,91 +28,79 @@
 % POSSIBILITY OF SUCH DAMAGE.;
 
 
-function [estimator] = setup_estimator(model)
+function [estimator] = setup_estimator(model, h, N)
 
-N = model.N;
-T = N * model.h;
+    T = N * h;
 
-nlp_solver = 'sqp'; % sqp, sqp_rti
-qp_solver = 'partial_condensing_hpipm';
-    % full_condensing_hpipm, partial_condensing_hpipm, full_condensing_qpoases
+    %% model dynamics
+    nx = length(model.x);
+    nu = length(model.u);
+    ny = 1;
+    nw = nu;               % state noise on parameter
 
-% integrator type
-sim_method = 'erk'; % erk, irk, irk_gnsf
+    ocp = AcadosOcp();
 
-%% model dynamics
-nx = model.nx;
-nu = model.nu;
-ny = model.ny;
+    ocp.model = model;
+    ocp.solver_options.tf = T;
 
-ocp_model = acados_ocp_model();
-model_name = 'lorentz_model_estimator';
+    %% cost
+    % weighting matrices
+    Q = 1*eye(nw);
+    R = 1;
+    P0 = 0.1*eye(nx);
+    P0(nx, nx) = 0.001;
 
-%% acados ocp model
-ocp_model.set('name', model_name);
-ocp_model.set('T', T);
+    W_0 = blkdiag(R, Q, P0);
+    W = blkdiag(R, Q);
 
-% symbolics
-ocp_model.set('sym_x', model.sym_x);
-ocp_model.set('sym_u', model.sym_u);
-ocp_model.set('dyn_expr_f', model.f_expl_expr);
+    ocp.cost.cost_type = 'LINEAR_LS';
+    ocp.cost.cost_type_0 = 'LINEAR_LS';
+    ocp.cost.cost_type_e = 'LINEAR_LS';
 
-% cost
-ocp_model.set('cost_type', 'linear_ls');
-ocp_model.set('cost_type_0', 'linear_ls');
-ocp_model.set('cost_type_e','linear_ls');
+    nout = ny + nu;
+    nout_0 = ny + nu + nx;
 
-nout = ny + nu;
-nout_0 = ny + nu + nx;
+    Vx = zeros(nout, nx);
+    Vx(1, 1) = 1;
 
-Vx = zeros(nout, nx);
-Vx(1, 1) = 1;
+    Vu = zeros(nout, nu);
+    Vu(ny+1:ny+nu, :) = eye(nu);
 
-Vu = zeros(nout, nu);
-Vu(ny+1:ny+nu, :) = eye(nu);
+    Vx_0 = zeros(nout_0, nx);
+    Vx_0(1:ny, :) = eye(ny, nx);
+    Vx_0(ny+nu+1:end, :) = eye(nx);
 
-Vx_0 = zeros(nout_0, nx);
-Vx_0(1:ny, :) = eye(ny, nx);
-Vx_0(ny+nu+1:end, :) = eye(nx);
+    Vu_0 = zeros(nout_0, nu);
+    Vu_0(ny+1:ny+nu, :) = eye(nu);
 
-Vu_0 = zeros(nout_0, nu);
-Vu_0(ny+1:ny+nu, :) = eye(nu);
+    yref = zeros(nout, 1);
+    yref_0 = zeros(nout_0, 1);
 
-yref = zeros(nout, 1);
-yref_0 = zeros(nout_0, 1);
+    ocp.cost.Vx = Vx;
+    ocp.cost.Vu = Vu;
 
-ocp_model.set('cost_Vx', Vx);
-ocp_model.set('cost_Vu', Vu);
+    ocp.cost.Vx_0 = Vx_0;
+    ocp.cost.Vu_0 = Vu_0;
 
-ocp_model.set('cost_Vx_0', Vx_0);
-ocp_model.set('cost_Vu_0', Vu_0);
+    ocp.cost.yref = yref;
+    ocp.cost.yref_0 = yref_0;
 
-ocp_model.set('cost_y_ref', yref);
-ocp_model.set('cost_y_ref_0', yref_0);
+    ocp.cost.W = W;
+    ocp.cost.W_0 = W_0;
 
-ocp_model.set('cost_W', model.W);
-ocp_model.set('cost_W_0', model.W_0);
+    %% options
+    ocp.solver_options.N_horizon = N;
+    ocp.solver_options.nlp_solver_type = 'SQP';
+    ocp.solver_options.integrator_type = 'ERK';
 
-% dynamics
-ocp_model.set('dyn_type', 'explicit');
-ocp_model.set('dyn_expr_f', model.f_expl_expr);
+    ocp.solver_options.sim_method_num_stages = 2;
+    ocp.solver_options.sim_method_num_steps = 5;
 
+    ocp.solver_options.qp_solver = 'PARTIAL_CONDENSING_HPIPM';
+    ocp.solver_options.qp_solver_cond_N = N;
+    ocp.solver_options.print_level = 0;
+    ocp.solver_options.ext_fun_compile_flags = '';
 
-%% acados ocp set opts
-ocp_opts = acados_ocp_opts();
-ocp_opts.set('param_scheme_N', N);
-ocp_opts.set('nlp_solver', nlp_solver);
-ocp_opts.set('sim_method', sim_method);
-
-ocp_opts.set('sim_method_num_stages', 2);
-ocp_opts.set('sim_method_num_steps', 5);
-
-ocp_opts.set('qp_solver', qp_solver);
-ocp_opts.set('qp_solver_cond_N', N);
-ocp_opts.set('print_level', 0);
-
-%% create ocp solver
-estimator = acados_ocp(ocp_model, ocp_opts);
-
+    %% create ocp solver
+    estimator = AcadosOcpSolver(ocp);
 end
-

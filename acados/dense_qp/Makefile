@@ -1,8 +1,5 @@
 #
-# Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-# Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-# Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-# Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+# Copyright (c) The acados authors.
 #
 # This file is part of acados.
 #
@@ -40,6 +37,9 @@ OBJS += dense_qp_common.o
 OBJS += dense_qp_hpipm.o
 ifeq ($(ACADOS_WITH_QPOASES), 1)
 OBJS += dense_qp_qpoases.o
+endif
+ifeq ($(ACADOS_WITH_DAQP), 1)
+OBJS += dense_qp_daqp.o
 endif
 ifeq ($(ACADOS_WITH_QORE), 1)
 OBJS += dense_qp_qore.o

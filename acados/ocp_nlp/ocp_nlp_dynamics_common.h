@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -63,12 +60,11 @@ extern "C" {
 
 typedef struct
 {
-    void (*config_initialize_default)(void *config);
+    void (*config_initialize_default)(void *config, int stage);
     sim_config *sim_solver;
     /* dims */
     acados_size_t (*dims_calculate_size)(void *config);
     void *(*dims_assign)(void *config, void *raw_memory);
-    void (*dims_initialize)(void *config, void *dims, int nx, int nu, int nx1, int nu1, int nz);
     void (*dims_set)(void *config_, void *dims_, const char *field, int *value);
     void (*dims_get)(void *config_, void *dims_, const char *field, int* value);
     /* model */
@@ -80,6 +76,7 @@ typedef struct
     void *(*opts_assign)(void *config, void *dims, void *raw_memory);
     void (*opts_initialize_default)(void *config, void *dims, void *opts);
     void (*opts_set)(void *config_, void *opts_, const char *field, void *value);
+    void (*opts_get)(void *config_, void *opts_, const char *field, void *value);
     void (*opts_update)(void *config, void *dims, void *opts);
     /* memory */
     acados_size_t (*memory_calculate_size)(void *config, void *dims, void *opts);
@@ -88,23 +85,31 @@ typedef struct
     struct blasfeo_dvec *(*memory_get_fun_ptr)(void *memory_);
     struct blasfeo_dvec *(*memory_get_adj_ptr)(void *memory_);
     void (*memory_set_ux_ptr)(struct blasfeo_dvec *ux, void *memory_);
-    void (*memory_set_tmp_ux_ptr)(struct blasfeo_dvec *tmp_ux, void *memory_);
     void (*memory_set_ux1_ptr)(struct blasfeo_dvec *ux1, void *memory_);
-    void (*memory_set_tmp_ux1_ptr)(struct blasfeo_dvec *tmp_ux1, void *memory_);
     void (*memory_set_pi_ptr)(struct blasfeo_dvec *pi, void *memory_);
-    void (*memory_set_tmp_pi_ptr)(struct blasfeo_dvec *tmp_pi, void *memory_);
     void (*memory_set_BAbt_ptr)(struct blasfeo_dmat *BAbt, void *memory_);
     void (*memory_set_RSQrq_ptr)(struct blasfeo_dmat *RSQrq, void *memory_);
     void (*memory_set_dzduxt_ptr)(struct blasfeo_dmat *mat, void *memory_);
     void (*memory_set_sim_guess_ptr)(struct blasfeo_dvec *vec, bool *bool_ptr, void *memory_);
     void (*memory_set_z_alg_ptr)(struct blasfeo_dvec *vec, void *memory_);
+    void (*memory_set_dyn_jac_p_global_ptr)(struct blasfeo_dmat *dyn_jac_p_global, void *memory);
+    void (*memory_set_jac_lag_stat_p_global_ptr)(struct blasfeo_dmat *jac_lag_stat_p_global, void *memory);
     void (*memory_get)(void *config, void *dims, void *mem, const char *field, void* value);
+    void (*memory_set)(void *config, void *dims, void *mem, const char *field, void* value);
     /* workspace */
     acados_size_t (*workspace_calculate_size)(void *config, void *dims, void *opts);
     void (*initialize)(void *config_, void *dims, void *model_, void *opts_, void *mem_, void *work_);
     void (*update_qp_matrices)(void *config_, void *dims, void *model_, void *opts_, void *mem_, void *work_);
     void (*compute_fun)(void *config_, void *dims, void *model_, void *opts_, void *mem_, void *work_);
+    void (*compute_jac_hess_p)(void *config_, void *dims, void *model_, void *opts, void *mem, void *work_);
+
+    acados_size_t (*get_external_fun_workspace_requirement)(void *config, void *dims, void *opts_, void *in);
+    void (*set_external_fun_workspaces)(void *config, void *dims, void *opts_, void *in, void *work_);
+
+    void (*compute_adj_p)(void *config, void *dims, void *model, void *opts, void *memory, struct blasfeo_dvec *out);
+    void (*compute_fun_and_adj)(void *config_, void *dims, void *model_, void *opts_, void *mem_, void *work_);
     int (*precompute)(void *config_, void *dims, void *model_, void *opts_, void *mem_, void *work_);
+    int stage;
 } ocp_nlp_dynamics_config;
 
 //

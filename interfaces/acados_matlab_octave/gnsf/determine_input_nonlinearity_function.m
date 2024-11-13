@@ -1,8 +1,5 @@
 %
-% Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-% Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-% Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-% Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+% Copyright (c) The acados authors.
 %
 % This file is part of acados.
 %
@@ -29,6 +26,7 @@
 % CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 % ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.;
+
 %
 %   Author: Jonathan Frey: jonathanpaulfrey(at)gmail.com
 
@@ -55,7 +53,7 @@ y = [];
 for ii = 1:gnsf.nx1
     if gnsf.phi_expr.which_depends(gnsf.x(ii))
         y = vertcat(y, gnsf.x(ii));
-    else
+    % else
         % x(ii) is not part of y
     end
 end
@@ -64,7 +62,7 @@ end
 for ii = 1:gnsf.nx1
     if gnsf.phi_expr.which_depends(gnsf.xdot(ii))
         y = vertcat(y, gnsf.xdot(ii));
-    else
+    % else
         % xdot(ii) is not part of y
     end
 end
@@ -73,7 +71,7 @@ end
 for ii = 1:gnsf.nz1
     if gnsf.phi_expr.which_depends(gnsf.z(ii))
         y = vertcat(y, gnsf.z(ii));
-    else
+    % else
         % z(ii) is not part of y
     end
 end
@@ -84,7 +82,7 @@ uhat = [];
 for ii = 1:gnsf.nu
     if gnsf.phi_expr.which_depends(gnsf.u(ii))
         uhat = vertcat(uhat, gnsf.u(ii));
-    else
+    % else
         % u(ii) is not part of uhat
     end
 end
@@ -98,14 +96,10 @@ if isempty(y)
     gnsf.L_z = [];
 else
     dummy = SX.sym('dummy_input',0);
-    L_x_fun     = Function('L_x_fun', {dummy}, ...
-                        {jacobian( y, gnsf.x(1:gnsf.nx1)) });
-    L_xdot_fun  = Function('L_xdot_fun', {dummy}, ...
-                        {jacobian( y, gnsf.xdot(1:gnsf.nx1) )});
-    L_z_fun     = Function('L_z_fun', {dummy},...
-                        {jacobian(y, gnsf.z(1:gnsf.nz1) )});
-    L_u_fun     = Function('L_u_fun', {dummy},...
-                        {jacobian(uhat, gnsf.u)});
+    L_x_fun = Function('L_x_fun', {dummy}, {jacobian(y, gnsf.x(1:gnsf.nx1)) });
+    L_xdot_fun = Function('L_xdot_fun', {dummy}, {jacobian(y, gnsf.xdot(1:gnsf.nx1)) });
+    L_z_fun = Function('L_z_fun', {dummy}, {jacobian(y, gnsf.z(1:gnsf.nz1)) });
+    L_u_fun = Function('L_u_fun', {dummy}, {jacobian(uhat, gnsf.u) });
 
     gnsf.L_x = full(L_x_fun(0));
     gnsf.L_xdot = full(L_xdot_fun(0));

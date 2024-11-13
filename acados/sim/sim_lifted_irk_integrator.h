@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -96,10 +93,11 @@ typedef struct
     struct blasfeo_dvec *u;         // controls (nu) -- for expansion step
 
     int update_sens;
+    // int init_K;
 
-	double time_sim;
-	double time_ad;
-	double time_la;
+    double time_sim;
+    double time_ad;
+    double time_la;
 
 } sim_lifted_irk_memory;
 
@@ -142,6 +140,9 @@ void *sim_lifted_irk_memory_assign(void *config, void *dims, void *opts_, void *
 /* workspace */
 //
 acados_size_t sim_lifted_irk_workspace_calculate_size(void *config, void *dims, void *opts_);
+size_t sim_irk_get_external_fun_workspace_requirement(void *config_, void *dims_, void *opts_, void *model_);
+void sim_irk_set_external_fun_workspaces(void *config_, void *dims_, void *opts_, void *model_, void *workspace_);
+
 //
 void sim_lifted_irk_config_initialize_default(void *config);
 

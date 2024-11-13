@@ -1,8 +1,5 @@
 %
-% Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-% Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-% Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-% Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+% Copyright (c) The acados authors.
 %
 % This file is part of acados.
 %
@@ -29,116 +26,121 @@
 % CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 % ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.;
-%
 
-%% test of native matlab interface
-clear all
+import casadi.*
 
-model_path = fullfile(pwd,'..','pendulum_on_cart_model');
-addpath(model_path)
-
-check_acados_requirements()
-
-%% discretization
-N = 20;
-T = 1; % time horizon length
-x0 = [0; pi; 0; 0];
-
-nlp_solver = 'sqp'; % sqp, sqp_rti
-qp_solver = 'partial_condensing_hpipm';
-    % full_condensing_hpipm, partial_condensing_hpipm, full_condensing_qpoases
-qp_solver_cond_N = 5; % for partial condensing
-% integrator type
-sim_method = 'erk'; % erk, irk, irk_gnsf
-
-%% model dynamics
-model = pendulum_on_cart_model;
-nx = model.nx;
-nu = model.nu;
-ny = size(model.cost_expr_y, 1);      % used in simulink example
-ny_e = size(model.cost_expr_y_e, 1);
-
-%% model to create the solver
-ocp_model = acados_ocp_model();
-model_name = 'pendulum';
-
-%% acados ocp model
-ocp_model.set('name', model_name);
-ocp_model.set('T', T);
-
-% symbolics
-ocp_model.set('sym_x', model.sym_x);
-ocp_model.set('sym_u', model.sym_u);
-ocp_model.set('sym_xdot', model.sym_xdot);
-
-% cost
-ocp_model.set('cost_expr_ext_cost', model.expr_ext_cost);
-ocp_model.set('cost_expr_ext_cost_e', model.expr_ext_cost_e);
-
-% dynamics
-if (strcmp(sim_method, 'erk'))
-    ocp_model.set('dyn_type', 'explicit');
-    ocp_model.set('dyn_expr_f', model.expr_f_expl);
-else % irk irk_gnsf
-    ocp_model.set('dyn_type', 'implicit');
-    ocp_model.set('dyn_expr_f', model.expr_f_impl);
+% options needed for the Simulink example
+if ~exist('simulink_opts','var')
+    % disp('using acados simulink default options')
+    % simulink_opts = get_acados_simulink_opts;
+    disp('using empty simulink_opts to generate solver without simulink block')
+    simulink_opts = [];
 end
 
-% constraints
-ocp_model.set('constr_type', 'auto');
-ocp_model.set('constr_expr_h', model.expr_h);
+%
+check_acados_requirements()
+
+%% solver settings
+N = 20; % number of discretization steps
+T = 1; % [s] prediction horizon length
+x0 = [0; pi; 0; 0]; % initial state
+
+%% model dynamics
+model = get_pendulum_on_cart_model();
+nx = length(model.x); % state size
+nu = length(model.u); % input size
+
+%% OCP formulation object
+ocp = AcadosOcp();
+ocp.model = model;
+
+%% cost in nonlinear least squares form
+W_x = diag([1e3, 1e3, 1e-2, 1e-2]);
+W_u = 1e-2;
+
+% initial cost term
+ny_0 = nu;
+ocp.cost.cost_type_0 = 'NONLINEAR_LS';
+ocp.cost.W_0 = W_u;
+ocp.cost.yref_0 = zeros(ny_0, 1);
+ocp.model.cost_y_expr_0 = model.u;
+
+% path cost term
+ny = nx + nu;
+ocp.cost.cost_type = 'NONLINEAR_LS';
+ocp.cost.W = blkdiag(W_x, W_u);
+ocp.cost.yref = zeros(ny, 1);
+ocp.model.cost_y_expr = vertcat(model.x, model.u);
+
+% terminal cost term
+ny_e = nx;
+ocp.cost.cost_type_e = 'NONLINEAR_LS';
+ocp.model.cost_y_expr_e = model.x;
+ocp.cost.yref_e = zeros(ny_e, 1);
+ocp.cost.W_e = W_x;
+
+%% define constraints
+% only bound on u on initial stage and path
+ocp.model.con_h_expr = model.u;
+ocp.model.con_h_expr_0 = model.u;
+
 U_max = 80;
-ocp_model.set('constr_lh', -U_max); % lower bound on h
-ocp_model.set('constr_uh', U_max);  % upper bound on h
+ocp.constraints.lh = -U_max;
+ocp.constraints.lh_0 = -U_max;
+ocp.constraints.uh = U_max;
+ocp.constraints.uh_0 = U_max;
+ocp.constraints.x0 = x0;
 
-ocp_model.set('constr_x0', x0);
-% ... see ocp_model.model_struct to see what other fields can be set
+% define solver options
+ocp.solver_options.N_horizon = N;
+ocp.solver_options.tf = T;
+ocp.solver_options.nlp_solver_type = 'SQP';
+ocp.solver_options.integrator_type = 'ERK';
+ocp.solver_options.qp_solver = 'PARTIAL_CONDENSING_HPIPM';
+ocp.solver_options.qp_solver_mu0 = 1e3;
+ocp.solver_options.qp_solver_cond_N = 5;
+ocp.solver_options.hessian_approx = 'GAUSS_NEWTON';
+ocp.solver_options.ext_fun_compile_flags = '-O2';
+ocp.solver_options.globalization = 'MERIT_BACKTRACKING';
+% ocp.solver_options.qp_solver_iter_max = 100
+ocp.simulink_opts = simulink_opts;
 
-%% acados ocp set opts
-ocp_opts = acados_ocp_opts();
-ocp_opts.set('param_scheme_N', N);
-ocp_opts.set('nlp_solver', nlp_solver);
-ocp_opts.set('sim_method', sim_method);
-ocp_opts.set('qp_solver', qp_solver);
-ocp_opts.set('qp_solver_cond_N', qp_solver_cond_N);
-% ... see ocp_opts.opts_struct to see what other fields can be set
+% create solver
+ocp_solver = AcadosOcpSolver(ocp);
 
-%% create ocp solver
-ocp = acados_ocp(ocp_model, ocp_opts);
-
+% solver initial guess
 x_traj_init = zeros(nx, N+1);
 u_traj_init = zeros(nu, N);
 
 %% call ocp solver
 % update initial state
-ocp.set('constr_x0', x0);
+ocp_solver.set('constr_x0', x0);
 
 % set trajectory initialization
-ocp.set('init_x', x_traj_init);
-ocp.set('init_u', u_traj_init);
-ocp.set('init_pi', zeros(nx, N))
+ocp_solver.set('init_x', x_traj_init); % states
+ocp_solver.set('init_u', u_traj_init); % inputs
+ocp_solver.set('init_pi', zeros(nx, N)); % multipliers for dynamics equality constraints
 
 % change values for specific shooting node using:
-%   ocp.set('field', value, optional: stage_index)
-ocp.set('constr_lbx', x0, 0)
+%   ocp_solver.set('field', value, optional: stage_index)
 
 % solve
-ocp.solve();
+ocp_solver.solve();
 % get solution
-utraj = ocp.get('u');
-xtraj = ocp.get('x');
+utraj = ocp_solver.get('u');
+xtraj = ocp_solver.get('x');
 
-status = ocp.get('status'); % 0 - success
-ocp.print('stat')
+status = ocp_solver.get('status'); % 0 - success
+ocp_solver.print('stat')
 
-%% Plots
+%% plots
 ts = linspace(0, T, N+1);
 figure; hold on;
-States = {'p', 'theta', 'v', 'dtheta'};
-for i=1:length(States)
-    subplot(length(States), 1, i);
+states = {'p', 'theta', 'v', 'dtheta'};
+for i=1:length(states)
+    subplot(length(states), 1, i);
     plot(ts, xtraj(i,:)); grid on;
-    ylabel(States{i});
+    ylabel(states{i});
     xlabel('t [s]')
 end
 
@@ -147,7 +149,3 @@ stairs(ts, [utraj'; utraj(end)])
 ylabel('F [N]')
 xlabel('t [s]')
 grid on
-
-%% go embedded
-% to generate templated C code
-% ocp.generate_c_code;

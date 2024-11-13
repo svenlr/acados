@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -155,7 +152,7 @@ void sim_dims_get_from_attr(sim_config *config, void *dims, const char *field, i
     {
         sim_dims_get(config, dims, "nu", &dims_out[0]);
     }
-    else if (!strcmp(field, "T"))
+    else if (!strcmp(field, "T") || !strcmp(field, "t0"))
     {
         dims_out[0] = 1;
     }
@@ -165,6 +162,41 @@ void sim_dims_get_from_attr(sim_config *config, void *dims, const char *field, i
         sim_dims_get(config, dims, "nu", &tmp);
         sim_dims_get(config, dims, "nx", &dims_out[0]);
         dims_out[0] += tmp;
+    }
+    else if (!strcmp(field, "S_algebraic"))
+    {
+        int tmp;
+        sim_dims_get(config, dims, "nz", &dims_out[0]);
+        sim_dims_get(config, dims, "nx", &dims_out[1]);
+        sim_dims_get(config, dims, "nu", &tmp);
+        dims_out[1] += tmp;
+    }
+    else if (!strcmp(field, "S_forw"))
+    {
+        sim_dims_get(config, dims, "nx", &dims_out[0]);
+        sim_dims_get(config, dims, "nu", &dims_out[1]);
+        dims_out[1] += dims_out[0];
+    }
+    else if (!strcmp(field, "S_hess"))
+    {
+        sim_dims_get(config, dims, "nx", &dims_out[0]);
+        sim_dims_get(config, dims, "nu", &dims_out[1]);
+        dims_out[1] += dims_out[0];
+        dims_out[0] = dims_out[1];
+    }
+    else if (!strcmp(field, "Sx"))
+    {
+        sim_dims_get(config, dims, "nx", &dims_out[0]);
+        sim_dims_get(config, dims, "nx", &dims_out[1]);
+    }
+    else if (!strcmp(field, "Su"))
+    {
+        sim_dims_get(config, dims, "nx", &dims_out[0]);
+        sim_dims_get(config, dims, "nu", &dims_out[1]);
+    }
+    else if (!strcmp(field, "seed_adj"))
+    {
+        sim_dims_get(config, dims, "nx", &dims_out[0]);
     }
     else
     {
@@ -278,19 +310,20 @@ void sim_opts_get(sim_config *config, void *opts, const char *field, void *value
 * solver
 ************************************************/
 
-acados_size_t sim_calculate_size(sim_config *config, void *dims, void *opts_)
+acados_size_t sim_calculate_size(sim_config *config, void *dims, void *opts_, sim_in *in)
 {
     acados_size_t bytes = sizeof(sim_solver);
 
     bytes += config->memory_calculate_size(config, dims, opts_);
     bytes += config->workspace_calculate_size(config, dims, opts_);
+    bytes += config->get_external_fun_workspace_requirement(config, dims, opts_, in->model);
 
     return bytes;
 }
 
 
 
-sim_solver *sim_assign(sim_config *config, void *dims, void *opts_, void *raw_memory)
+sim_solver *sim_assign(sim_config *config, void *dims, void *opts_, sim_in *in, void *raw_memory)
 {
     char *c_ptr = (char *) raw_memory;
 
@@ -301,30 +334,31 @@ sim_solver *sim_assign(sim_config *config, void *dims, void *opts_, void *raw_me
     solver->dims = dims;
     solver->opts = opts_;
 
-    // TODO(dimitris): CHECK ALIGNMENT!
-
     solver->mem = config->memory_assign(config, dims, opts_, c_ptr);
     c_ptr += config->memory_calculate_size(config, dims, opts_);
 
     solver->work = (void *) c_ptr;
     c_ptr += config->workspace_calculate_size(config, dims, opts_);
 
-    assert((char *) raw_memory + sim_calculate_size(config, dims, opts_) == c_ptr);
+    config->set_external_fun_workspaces(config, dims, opts_, in->model, c_ptr);
+    c_ptr += config->get_external_fun_workspace_requirement(config, dims, opts_, in->model);
+
+    assert((char *) raw_memory + sim_calculate_size(config, dims, opts_, in) == c_ptr);
 
     return solver;
 }
 
 
 
-sim_solver *sim_solver_create(sim_config *config, void *dims, void *opts_)
+sim_solver *sim_solver_create(sim_config *config, void *dims, void *opts_, sim_in *in)
 {
     // update Butcher tableau (needed if the user changed ns)
     config->opts_update(config, dims, opts_);
-    acados_size_t bytes = sim_calculate_size(config, dims, opts_);
+    acados_size_t bytes = sim_calculate_size(config, dims, opts_, in);
 
     void *ptr = calloc(1, bytes);
 
-    sim_solver *solver = sim_assign(config, dims, opts_, ptr);
+    sim_solver *solver = sim_assign(config, dims, opts_, in, ptr);
 
     return solver;
 }

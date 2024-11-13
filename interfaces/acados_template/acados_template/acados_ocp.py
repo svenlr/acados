@@ -1,9 +1,6 @@
 # -*- coding: future_fstrings -*-
 #
-# Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-# Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-# Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-# Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+# Copyright (c) The acados authors.
 #
 # This file is part of acados.
 #
@@ -32,2827 +29,34 @@
 # POSSIBILITY OF SUCH DAMAGE.;
 #
 
+from typing import Optional, Union
 import numpy as np
-import os
+
+from scipy.linalg import block_diag
+from copy import deepcopy
+
+import casadi as ca
+import os, shutil
+import json
+
 from .acados_model import AcadosModel
-from .utils import get_acados_path, J_to_idx, J_to_idx_slack
-
-class AcadosOcpDims:
-    """
-    Class containing the dimensions of the optimal control problem.
-    """
-    def __init__(self):
-        self.__nx      = None
-        self.__nu      = None
-        self.__nz      = 0
-        self.__np      = 0
-        self.__ny      = 0
-        self.__ny_e    = 0
-        self.__ny_0    = 0
-        self.__nr      = 0
-        self.__nr_e    = 0
-        self.__nh      = 0
-        self.__nh_e    = 0
-        self.__nphi    = 0
-        self.__nphi_e  = 0
-        self.__nbx     = 0
-        self.__nbx_0   = 0
-        self.__nbx_e   = 0
-        self.__nbu     = 0
-        self.__nsbx    = 0
-        self.__nsbx_e  = 0
-        self.__nsbu    = 0
-        self.__nsh     = 0
-        self.__nsh_e   = 0
-        self.__nsphi   = 0
-        self.__nsphi_e = 0
-        self.__ns      = 0
-        self.__ns_e    = 0
-        self.__ng      = 0
-        self.__ng_e    = 0
-        self.__nsg     = 0
-        self.__nsg_e   = 0
-        self.__nbxe_0  = None
-        self.__N       = None
-
-
-    @property
-    def nx(self):
-        """:math:`n_x` - number of states.
-        Type: int; default: None"""
-        return self.__nx
-
-    @property
-    def nz(self):
-        """:math:`n_z` - number of algebraic variables.
-        Type: int; default: 0"""
-        return self.__nz
-
-    @property
-    def nu(self):
-        """:math:`n_u` - number of inputs.
-        Type: int; default: None"""
-        return self.__nu
-
-    @property
-    def np(self):
-        """:math:`n_p` - number of parameters.
-        Type: int; default: 0"""
-        return self.__np
-
-    @property
-    def ny(self):
-        """:math:`n_y` - number of residuals in Lagrange term.
-        Type: int; default: 0"""
-        return self.__ny
-
-    @property
-    def ny_0(self):
-        """:math:`n_{y}^0` - number of residuals in Mayer term.
-        Type: int; default: 0"""
-        return self.__ny_0
-
-    @property
-    def ny_e(self):
-        """:math:`n_{y}^e` - number of residuals in Mayer term.
-        Type: int; default: 0"""
-        return self.__ny_e
-
-    @property
-    def nr(self):
-        """:math:`n_{\pi}` - dimension of the image of the inner nonlinear function in positive definite constraints.
-        Type: int; default: 0"""
-        return self.__nr
-
-    @property
-    def nr_e(self):
-        """:math:`n_{\pi}^e` - dimension of the image of the inner nonlinear function in positive definite constraints.
-        Type: int; default: 0"""
-        return self.__nr_e
-
-    @property
-    def nh(self):
-        """:math:`n_h` - number of nonlinear constraints.
-        Type: int; default: 0"""
-        return self.__nh
-
-    @property
-    def nh_e(self):
-        """:math:`n_{h}^e` - number of nonlinear constraints at terminal shooting node N.
-        Type: int; default: 0"""
-        return self.__nh_e
-
-    @property
-    def nphi(self):
-        """:math:`n_{\phi}` - number of convex-over-nonlinear constraints.
-        Type: int; default: 0"""
-        return self.__nphi
-
-    @property
-    def nphi_e(self):
-        """:math:`n_{\phi}^e` - number of convex-over-nonlinear constraints at terminal shooting node N.
-        Type: int; default: 0"""
-        return self.__nphi_e
-
-    @property
-    def nbx(self):
-        """:math:`n_{b_x}` - number of state bounds.
-        Type: int; default: 0"""
-        return self.__nbx
-
-    @property
-    def nbxe_0(self):
-        """:math:`n_{be_{x0}}` - number of state bounds at initial shooting node that are equalities.
-        Type: int; default: None"""
-        return self.__nbxe_0
-
-    @property
-    def nbx_0(self):
-        """:math:`n_{b_{x0}}` - number of state bounds for initial state.
-        Type: int; default: 0"""
-        return self.__nbx_0
-
-    @property
-    def nbx_e(self):
-        """:math:`n_{b_x}` - number of state bounds at terminal shooting node N.
-        Type: int; default: 0"""
-        return self.__nbx_e
-
-    @property
-    def nbu(self):
-        """:math:`n_{b_u}` - number of input bounds.
-        Type: int; default: 0"""
-        return self.__nbu
-
-    @property
-    def nsbx(self):
-        """:math:`n_{{sb}_x}` - number of soft state bounds.
-        Type: int; default: 0"""
-        return self.__nsbx
-
-    @property
-    def nsbx_e(self):
-        """:math:`n_{{sb}^e_{x}}` - number of soft state bounds at terminal shooting node N.
-        Type: int; default: 0"""
-        return self.__nsbx_e
-
-    @property
-    def nsbu(self):
-        """:math:`n_{{sb}_u}` - number of soft input bounds.
-        Type: int; default: 0"""
-        return self.__nsbu
-
-    @property
-    def nsg(self):
-        """:math:`n_{{sg}}` - number of soft general linear constraints.
-        Type: int; default: 0"""
-        return self.__nsg
-
-    @property
-    def nsg_e(self):
-        """:math:`n_{{sg}^e}` - number of soft general linear constraints at terminal shooting node N.
-        Type: int; default: 0"""
-        return self.__nsg_e
-
-    @property
-    def nsh(self):
-        """:math:`n_{{sh}}` - number of soft nonlinear constraints.
-        Type: int; default: 0"""
-        return self.__nsh
-
-    @property
-    def nsh_e(self):
-        """:math:`n_{{sh}}^e` - number of soft nonlinear constraints at terminal shooting node N.
-        Type: int; default: 0"""
-        return self.__nsh_e
-
-    @property
-    def nsphi(self):
-        """:math:`n_{{s\phi}}` - number of soft convex-over-nonlinear constraints.
-        Type: int; default: 0"""
-        return self.__nsphi
-
-    @property
-    def nsphi_e(self):
-        """:math:`n_{{s\phi}^e}` - number of soft convex-over-nonlinear constraints at terminal shooting node N.
-        Type: int; default: 0"""
-        return self.__nsphi_e
-
-    @property
-    def ns(self):
-        """:math:`n_{s}` - total number of slacks.
-        Type: int; default: 0"""
-        return self.__ns
-
-    @property
-    def ns_e(self):
-        """:math:`n_{s}^e` - total number of slacks at terminal shooting node N.
-        Type: int; default: 0"""
-        return self.__ns_e
-
-    @property
-    def ng(self):
-        """:math:`n_{g}` - number of general polytopic constraints.
-        Type: int; default: 0"""
-        return self.__ng
-
-    @property
-    def ng_e(self):
-        """:math:`n_{g}^e` - number of general polytopic constraints at terminal shooting node N.
-        Type: int; default: 0"""
-        return self.__ng_e
-
-    @property
-    def N(self):
-        """:math:`N` - prediction horizon.
-        Type: int; default: None"""
-        return self.__N
-
-    @nx.setter
-    def nx(self, nx):
-        if isinstance(nx, int) and nx > 0:
-            self.__nx = nx
-        else:
-            raise Exception('Invalid nx value, expected positive integer. Exiting.')
-
-    @nz.setter
-    def nz(self, nz):
-        if isinstance(nz, int) and nz > -1:
-            self.__nz = nz
-        else:
-            raise Exception('Invalid nz value, expected nonnegative integer. Exiting.')
-
-    @nu.setter
-    def nu(self, nu):
-        if isinstance(nu, int) and nu > -1:
-            self.__nu = nu
-        else:
-            raise Exception('Invalid nu value, expected nonnegative integer. Exiting.')
-
-    @np.setter
-    def np(self, np):
-        if isinstance(np, int) and np > -1:
-            self.__np = np
-        else:
-            raise Exception('Invalid np value, expected nonnegative integer. Exiting.')
-
-    @ny_0.setter
-    def ny_0(self, ny_0):
-        if isinstance(ny_0, int) and ny_0 > -1:
-            self.__ny_0 = ny_0
-        else:
-            raise Exception('Invalid ny_0 value, expected nonnegative integer. Exiting.')
-
-    @ny.setter
-    def ny(self, ny):
-        if isinstance(ny, int) and ny > -1:
-            self.__ny = ny
-        else:
-            raise Exception('Invalid ny value, expected nonnegative integer. Exiting.')
-
-    @ny_e.setter
-    def ny_e(self, ny_e):
-        if isinstance(ny_e, int) and ny_e > -1:
-            self.__ny_e = ny_e
-        else:
-            raise Exception('Invalid ny_e value, expected nonnegative integer. Exiting.')
-
-    @nr.setter
-    def nr(self, nr):
-        if isinstance(nr, int) and nr > -1:
-            self.__nr = nr
-        else:
-            raise Exception('Invalid nr value, expected nonnegative integer. Exiting.')
-
-    @nr_e.setter
-    def nr_e(self, nr_e):
-        if isinstance(nr_e, int) and nr_e > -1:
-            self.__nr_e = nr_e
-        else:
-            raise Exception('Invalid nr_e value, expected nonnegative integer. Exiting.')
-
-    @nh.setter
-    def nh(self, nh):
-        if isinstance(nh, int) and nh > -1:
-            self.__nh = nh
-        else:
-            raise Exception('Invalid nh value, expected nonnegative integer. Exiting.')
-
-    @nh_e.setter
-    def nh_e(self, nh_e):
-        if isinstance(nh_e, int) and nh_e > -1:
-            self.__nh_e = nh_e
-        else:
-            raise Exception('Invalid nh_e value, expected nonnegative integer. Exiting.')
-
-    @nphi.setter
-    def nphi(self, nphi):
-        if isinstance(nphi, int) and nphi > -1:
-            self.__nphi = nphi
-        else:
-            raise Exception('Invalid nphi value, expected nonnegative integer. Exiting.')
-
-    @nphi_e.setter
-    def nphi_e(self, nphi_e):
-        if isinstance(nphi_e, int) and nphi_e > -1:
-            self.__nphi_e = nphi_e
-        else:
-            raise Exception('Invalid nphi_e value, expected nonnegative integer. Exiting.')
-
-    @nbx.setter
-    def nbx(self, nbx):
-        if isinstance(nbx, int) and nbx > -1:
-            self.__nbx = nbx
-        else:
-            raise Exception('Invalid nbx value, expected nonnegative integer. Exiting.')
-
-    @nbxe_0.setter
-    def nbxe_0(self, nbxe_0):
-        if isinstance(nbxe_0, int) and nbxe_0 > -1:
-            self.__nbxe_0 = nbxe_0
-        else:
-            raise Exception('Invalid nbxe_0 value, expected nonnegative integer. Exiting.')
-
-    @nbx_0.setter
-    def nbx_0(self, nbx_0):
-        if isinstance(nbx_0, int) and nbx_0 > -1:
-            self.__nbx_0 = nbx_0
-        else:
-            raise Exception('Invalid nbx_0 value, expected nonnegative integer. Exiting.')
-
-    @nbx_e.setter
-    def nbx_e(self, nbx_e):
-        if isinstance(nbx_e, int) and nbx_e > -1:
-            self.__nbx_e = nbx_e
-        else:
-            raise Exception('Invalid nbx_e value, expected nonnegative integer. Exiting.')
-
-    @nbu.setter
-    def nbu(self, nbu):
-        if isinstance(nbu, int) and nbu > -1:
-            self.__nbu = nbu
-        else:
-            raise Exception('Invalid nbu value, expected nonnegative integer. Exiting.')
-
-    @nsbx.setter
-    def nsbx(self, nsbx):
-        if isinstance(nsbx, int) and nsbx > -1:
-            self.__nsbx = nsbx
-        else:
-            raise Exception('Invalid nsbx value, expected nonnegative integer. Exiting.')
-
-    @nsbx_e.setter
-    def nsbx_e(self, nsbx_e):
-        if isinstance(nsbx_e, int) and nsbx_e > -1:
-            self.__nsbx_e = nsbx_e
-        else:
-            raise Exception('Invalid nsbx_e value, expected nonnegative integer. Exiting.')
-
-    @nsbu.setter
-    def nsbu(self, nsbu):
-        if isinstance(nsbu, int) and nsbu > -1:
-            self.__nsbu = nsbu
-        else:
-            raise Exception('Invalid nsbu value, expected nonnegative integer. Exiting.')
-
-    @nsg.setter
-    def nsg(self, nsg):
-        if isinstance(nsg, int) and nsg > -1:
-            self.__nsg = nsg
-        else:
-            raise Exception('Invalid nsg value, expected nonnegative integer. Exiting.')
-
-    @nsg_e.setter
-    def nsg_e(self, nsg_e):
-        if isinstance(nsg_e, int) and nsg_e > -1:
-            self.__nsg_e = nsg_e
-        else:
-            raise Exception('Invalid nsg_e value, expected nonnegative integer. Exiting.')
-
-    @nsh.setter
-    def nsh(self, nsh):
-        if isinstance(nsh, int) and nsh > -1:
-            self.__nsh = nsh
-        else:
-            raise Exception('Invalid nsh value, expected nonnegative integer. Exiting.')
-
-    @nsh_e.setter
-    def nsh_e(self, nsh_e):
-        if isinstance(nsh_e, int) and nsh_e > -1:
-            self.__nsh_e = nsh_e
-        else:
-            raise Exception('Invalid nsh_e value, expected nonnegative integer. Exiting.')
-
-    @nsphi.setter
-    def nsphi(self, nsphi):
-        if isinstance(nsphi, int) and nsphi > -1:
-            self.__nsphi = nsphi
-        else:
-            raise Exception('Invalid nsphi value, expected nonnegative integer. Exiting.')
-
-    @nsphi_e.setter
-    def nsphi_e(self, nsphi_e):
-        if isinstance(nsphi_e, int) and nsphi_e > -1:
-            self.__nsphi_e = nsphi_e
-        else:
-            raise Exception('Invalid nsphi_e value, expected nonnegative integer. Exiting.')
-
-    @ns.setter
-    def ns(self, ns):
-        if isinstance(ns, int) and ns > -1:
-            self.__ns = ns
-        else:
-            raise Exception('Invalid ns value, expected nonnegative integer. Exiting.')
-
-    @ns_e.setter
-    def ns_e(self, ns_e):
-        if isinstance(ns_e, int) and ns_e > -1:
-            self.__ns_e = ns_e
-        else:
-            raise Exception('Invalid ns_e value, expected nonnegative integer. Exiting.')
-
-    @ng.setter
-    def ng(self, ng):
-        if isinstance(ng, int) and ng > -1:
-            self.__ng = ng
-        else:
-            raise Exception('Invalid ng value, expected nonnegative integer. Exiting.')
-
-    @ng_e.setter
-    def ng_e(self, ng_e):
-        if isinstance(ng_e, int) and ng_e > -1:
-            self.__ng_e = ng_e
-        else:
-            raise Exception('Invalid ng_e value, expected nonnegative integer. Exiting.')
-
-    @N.setter
-    def N(self, N):
-        if isinstance(N, int) and N > 0:
-            self.__N = N
-        else:
-            raise Exception('Invalid N value, expected positive integer. Exiting.')
-
-    def set(self, attr, value):
-        setattr(self, attr, value)
-
-
-class AcadosOcpCost:
-    """
-    Class containing the numerical data of the cost:
-
-    In case of LINEAR_LS:
-    stage cost is
-    :math:`l(x,u,z) = || V_x \, x + V_u \, u + V_z \, z - y_\\text{ref}||^2_W`,
-    terminal cost is
-    :math:`m(x) = || V^e_x \, x - y_\\text{ref}^e||^2_{W^e}`
-
-    In case of NONLINEAR_LS:
-    stage cost is
-    :math:`l(x,u,z) = || y(x,u,z) - y_\\text{ref}||^2_W`,
-    terminal cost is
-    :math:`m(x) = || y^e(x) - y_\\text{ref}^e||^2_{W^e}`
-    """
-    def __init__(self):
-        # initial stage
-        self.__cost_type_0 = None
-        self.__W_0 = None
-        self.__Vx_0 = None
-        self.__Vu_0 = None
-        self.__Vz_0 = None
-        self.__yref_0 = None
-        self.__cost_ext_fun_type_0 = 'casadi'
-        # Lagrange term
-        self.__cost_type   = 'LINEAR_LS'  # cost type
-        self.__W           = np.zeros((0,0))
-        self.__Vx          = np.zeros((0,0))
-        self.__Vu          = np.zeros((0,0))
-        self.__Vz          = np.zeros((0,0))
-        self.__yref        = np.array([])
-        self.__Zl          = np.array([])
-        self.__Zu          = np.array([])
-        self.__zl          = np.array([])
-        self.__zu          = np.array([])
-        self.__cost_ext_fun_type = 'casadi'
-        # Mayer term
-        self.__cost_type_e = 'LINEAR_LS'
-        self.__W_e         = np.zeros((0,0))
-        self.__Vx_e        = np.zeros((0,0))
-        self.__yref_e      = np.array([])
-        self.__Zl_e        = np.array([])
-        self.__Zu_e        = np.array([])
-        self.__zl_e        = np.array([])
-        self.__zu_e        = np.array([])
-        self.__cost_ext_fun_type_e = 'casadi'
-
-    # initial stage
-    @property
-    def cost_type_0(self):
-        """Cost type at initial shooting node (0)
-        -- string in {EXTERNAL, LINEAR_LS, NONLINEAR_LS} or :code:`None`.
-        Default: :code:`None`.
-
-            .. note:: Cost at initial stage is the same as for intermediate shooting nodes if not set differently explicitly.
-
-            .. note:: If :py:attr:`cost_type_0` is set to :code:`None` values in :py:attr:`W_0`, :py:attr:`Vx_0`, :py:attr:`Vu_0`, :py:attr:`Vz_0` and :py:attr:`yref_0` are ignored (set to :code:`None`).
-        """
-        return self.__cost_type_0
-
-    @property
-    def W_0(self):
-        """:math:`W_0` - weight matrix at initial shooting node (0).
-        Default: :code:`None`.
-        """
-        return self.__W_0
-
-    @property
-    def Vx_0(self):
-        """:math:`V_x^0` - x matrix coefficient at initial shooting node (0).
-        Default: :code:`None`.
-        """
-        return self.__Vx_0
-
-    @property
-    def Vu_0(self):
-        """:math:`V_u^0` - u matrix coefficient at initial shooting node (0).
-        Default: :code:`None`.
-        """
-        return self.__Vu_0
-
-    @property
-    def Vz_0(self):
-        """:math:`V_z^0` - z matrix coefficient at initial shooting node (0).
-        Default: :code:`None`.
-        """
-        return self.__Vz_0
-
-    @property
-    def yref_0(self):
-        """:math:`y_\\text{ref}^0` - reference at initial shooting node (0).
-        Default: :code:`None`.
-        """
-        return self.__yref_0
-
-    @property
-    def cost_ext_fun_type_0(self):
-        """Type of external function for cost at initial shooting node (0)
-        -- string in {casadi, generic} or :code:`None`
-        Default: :code:'casadi'.
-
-            .. note:: Cost at initial stage is the same as for intermediate shooting nodes if not set differently explicitly.
-        """
-        return self.__cost_ext_fun_type_0
-
-    @yref_0.setter
-    def yref_0(self, yref_0):
-        if isinstance(yref_0, np.ndarray):
-            self.__yref_0 = yref_0
-        else:
-            raise Exception('Invalid yref_0 value, expected numpy array. Exiting.')
-
-    @W_0.setter
-    def W_0(self, W_0):
-        if isinstance(W_0, np.ndarray) and len(W_0.shape) == 2:
-            self.__W_0 = W_0
-        else:
-            raise Exception('Invalid cost W_0 value. ' \
-                + 'Should be 2 dimensional numpy array. Exiting.')
-
-    @Vx_0.setter
-    def Vx_0(self, Vx_0):
-        if isinstance(Vx_0, np.ndarray) and len(Vx_0.shape) == 2:
-            self.__Vx_0 = Vx_0
-        else:
-            raise Exception('Invalid cost Vx_0 value. ' \
-                + 'Should be 2 dimensional numpy array. Exiting.')
-
-    @Vu_0.setter
-    def Vu_0(self, Vu_0):
-        if isinstance(Vu_0, np.ndarray) and len(Vu_0.shape) == 2:
-            self.__Vu_0 = Vu_0
-        else:
-            raise Exception('Invalid cost Vu_0 value. ' \
-                + 'Should be 2 dimensional numpy array. Exiting.')
-
-    @Vz_0.setter
-    def Vz_0(self, Vz_0):
-        if isinstance(Vz_0, np.ndarray) and len(Vz_0.shape) == 2:
-            self.__Vz_0 = Vz_0
-        else:
-            raise Exception('Invalid cost Vz_0 value. ' \
-                + 'Should be 2 dimensional numpy array. Exiting.')
-
-    @cost_ext_fun_type_0.setter
-    def cost_ext_fun_type_0(self, cost_ext_fun_type_0):
-        if cost_ext_fun_type_0 in ['casadi', 'generic']:
-            self.__cost_ext_fun_type_0 = cost_ext_fun_type_0
-        else:
-            raise Exception('Invalid cost_ext_fun_type_0 value, expected numpy array. Exiting.')
-
-    # Lagrange term
-    @property
-    def cost_type(self):
-        """
-        Cost type at intermediate shooting nodes (1 to N-1)
-        -- string in {EXTERNAL, LINEAR_LS, NONLINEAR_LS}.
-        Default: 'LINEAR_LS'.
-        """
-        return self.__cost_type
-
-    @property
-    def W(self):
-        """:math:`W` - weight matrix at intermediate shooting nodes (1 to N-1).
-        Default: :code:`np.zeros((0,0))`.
-        """
-        return self.__W
-
-    @property
-    def Vx(self):
-        """:math:`V_x` - x matrix coefficient at intermediate shooting nodes (1 to N-1).
-        Default: :code:`np.zeros((0,0))`.
-        """
-        return self.__Vx
-
-    @property
-    def Vu(self):
-        """:math:`V_u` - u matrix coefficient at intermediate shooting nodes (1 to N-1).
-        Default: :code:`np.zeros((0,0))`.
-        """
-        return self.__Vu
-
-    @property
-    def Vz(self):
-        """:math:`V_z` - z matrix coefficient at intermediate shooting nodes (1 to N-1).
-        Default: :code:`np.zeros((0,0))`.
-        """
-        return self.__Vz
-
-    @property
-    def yref(self):
-        """:math:`y_\\text{ref}` - reference at intermediate shooting nodes (1 to N-1).
-        Default: :code:`np.array([])`.
-        """
-        return self.__yref
-
-    @property
-    def Zl(self):
-        """:math:`Z_l` - diagonal of Hessian wrt lower slack at intermediate shooting nodes (1 to N-1).
-        Default: :code:`np.array([])`.
-        """
-        return self.__Zl
-
-    @property
-    def Zu(self):
-        """:math:`Z_u` - diagonal of Hessian wrt upper slack at intermediate shooting nodes (1 to N-1).
-        Default: :code:`np.array([])`.
-        """
-        return self.__Zu
-
-    @property
-    def zl(self):
-        """:math:`z_l` - gradient wrt lower slack at intermediate shooting nodes (1 to N-1).
-        Default: :code:`np.array([])`.
-        """
-        return self.__zl
-
-    @property
-    def zu(self):
-        """:math:`z_u` - gradient wrt upper slack at intermediate shooting nodes (1 to N-1).
-        Default: :code:`np.array([])`.
-        """
-        return self.__zu
-
-    @property
-    def cost_ext_fun_type(self):
-        """Type of external function for cost at intermediate shooting nodes (1 to N-1).
-        -- string in {casadi, generic}
-        Default: :code:'casadi'.
-        """
-        return self.__cost_ext_fun_type
-
-    @cost_type.setter
-    def cost_type(self, cost_type):
-        cost_types = ('LINEAR_LS', 'NONLINEAR_LS', 'EXTERNAL')
-        if cost_type in cost_types:
-            self.__cost_type = cost_type
-        else:
-            raise Exception('Invalid cost_type value. Exiting.')
-
-    @cost_type_0.setter
-    def cost_type_0(self, cost_type_0):
-        cost_types = ('LINEAR_LS', 'NONLINEAR_LS', 'EXTERNAL')
-        if cost_type_0 in cost_types:
-            self.__cost_type_0 = cost_type_0
-        else:
-            raise Exception('Invalid cost_type_0 value. Exiting.')
-
-    @W.setter
-    def W(self, W):
-        if isinstance(W, np.ndarray) and len(W.shape) == 2:
-            self.__W = W
-        else:
-            raise Exception('Invalid cost W value. ' \
-                + 'Should be 2 dimensional numpy array. Exiting.')
-
-
-    @Vx.setter
-    def Vx(self, Vx):
-        if isinstance(Vx, np.ndarray) and len(Vx.shape) == 2:
-            self.__Vx = Vx
-        else:
-            raise Exception('Invalid cost Vx value. ' \
-                + 'Should be 2 dimensional numpy array. Exiting.')
-
-    @Vu.setter
-    def Vu(self, Vu):
-        if isinstance(Vu, np.ndarray) and len(Vu.shape) == 2:
-            self.__Vu = Vu
-        else:
-            raise Exception('Invalid cost Vu value. ' \
-                + 'Should be 2 dimensional numpy array. Exiting.')
-
-    @Vz.setter
-    def Vz(self, Vz):
-        if isinstance(Vz, np.ndarray) and len(Vz.shape) == 2:
-            self.__Vz = Vz
-        else:
-            raise Exception('Invalid cost Vz value. ' \
-                + 'Should be 2 dimensional numpy array. Exiting.')
-
-    @yref.setter
-    def yref(self, yref):
-        if isinstance(yref, np.ndarray):
-            self.__yref = yref
-        else:
-            raise Exception('Invalid yref value, expected numpy array. Exiting.')
-
-    @Zl.setter
-    def Zl(self, Zl):
-        if isinstance(Zl, np.ndarray):
-            self.__Zl = Zl
-        else:
-            raise Exception('Invalid Zl value, expected numpy array. Exiting.')
-
-    @Zu.setter
-    def Zu(self, Zu):
-        if isinstance(Zu, np.ndarray):
-            self.__Zu = Zu
-        else:
-            raise Exception('Invalid Zu value, expected numpy array. Exiting.')
-
-    @zl.setter
-    def zl(self, zl):
-        if isinstance(zl, np.ndarray):
-            self.__zl = zl
-        else:
-            raise Exception('Invalid zl value, expected numpy array. Exiting.')
-
-    @zu.setter
-    def zu(self, zu):
-        if isinstance(zu, np.ndarray):
-            self.__zu = zu
-        else:
-            raise Exception('Invalid zu value, expected numpy array. Exiting.')
-
-    @cost_ext_fun_type.setter
-    def cost_ext_fun_type(self, cost_ext_fun_type):
-        if cost_ext_fun_type in ['casadi', 'generic']:
-            self.__cost_ext_fun_type = cost_ext_fun_type
-        else:
-            raise Exception('Invalid cost_ext_fun_type value, expected numpy array. Exiting.')
-
-    # Mayer term
-    @property
-    def cost_type_e(self):
-        """
-        Cost type at terminal shooting node (N)
-        -- string in {EXTERNAL, LINEAR_LS, NONLINEAR_LS}.
-        Default: 'LINEAR_LS'.
-        """
-        return self.__cost_type_e
-
-    @property
-    def W_e(self):
-        """:math:`W_e` - weight matrix at terminal shooting node (N).
-        Default: :code:`np.zeros((0,0))`.
-        """
-        return self.__W_e
-
-    @property
-    def Vx_e(self):
-        """:math:`V_x^e` - x matrix coefficient for cost at terminal shooting node (N).
-        Default: :code:`np.zeros((0,0))`.
-        """
-        return self.__Vx_e
-
-    @property
-    def yref_e(self):
-        """:math:`y_\\text{ref}^e` - cost reference at terminal shooting node (N).
-        Default: :code:`np.array([])`.
-        """
-        return self.__yref_e
-
-    @property
-    def Zl_e(self):
-        """:math:`Z_l^e` - diagonal of Hessian wrt lower slack at terminal shooting node (N).
-        Default: :code:`np.array([])`.
-        """
-        return self.__Zl_e
-
-    @property
-    def Zu_e(self):
-        """:math:`Z_u^e` - diagonal of Hessian wrt upper slack at terminal shooting node (N).
-        Default: :code:`np.array([])`.
-        """
-        return self.__Zu_e
-
-    @property
-    def zl_e(self):
-        """:math:`z_l^e` - gradient wrt lower slack at terminal shooting node (N).
-        Default: :code:`np.array([])`.
-        """
-        return self.__zl_e
-
-    @property
-    def zu_e(self):
-        """:math:`z_u^e` - gradient wrt upper slack at terminal shooting node (N).
-        Default: :code:`np.array([])`.
-        """
-        return self.__zu_e
-
-    @property
-    def cost_ext_fun_type_e(self):
-        """Type of external function for cost at intermediate shooting nodes (1 to N-1).
-        -- string in {casadi, generic}
-        Default: :code:'casadi'.
-        """
-        return self.__cost_ext_fun_type_e
-
-    @cost_type_e.setter
-    def cost_type_e(self, cost_type_e):
-        cost_types = ('LINEAR_LS', 'NONLINEAR_LS', 'EXTERNAL')
-
-        if cost_type_e in cost_types:
-            self.__cost_type_e = cost_type_e
-        else:
-            raise Exception('Invalid cost_type_e value. Exiting.')
-
-    @W_e.setter
-    def W_e(self, W_e):
-        if isinstance(W_e, np.ndarray) and len(W_e.shape) == 2:
-            self.__W_e = W_e
-        else:
-            raise Exception('Invalid cost W_e value. ' \
-                + 'Should be 2 dimensional numpy array. Exiting.')
-
-    @Vx_e.setter
-    def Vx_e(self, Vx_e):
-        if isinstance(Vx_e, np.ndarray) and len(Vx_e.shape) == 2:
-            self.__Vx_e = Vx_e
-        else:
-            raise Exception('Invalid cost Vx_e value. ' \
-                + 'Should be 2 dimensional numpy array. Exiting.')
-
-    @yref_e.setter
-    def yref_e(self, yref_e):
-        if isinstance(yref_e, np.ndarray):
-            self.__yref_e = yref_e
-        else:
-            raise Exception('Invalid yref_e value, expected numpy array. Exiting.')
-
-    @Zl_e.setter
-    def Zl_e(self, Zl_e):
-        if isinstance(Zl_e, np.ndarray):
-            self.__Zl_e = Zl_e
-        else:
-            raise Exception('Invalid Zl_e value, expected numpy array. Exiting.')
-
-    @Zu_e.setter
-    def Zu_e(self, Zu_e):
-        if isinstance(Zu_e, np.ndarray):
-            self.__Zu_e = Zu_e
-        else:
-            raise Exception('Invalid Zu_e value, expected numpy array. Exiting.')
-
-    @zl_e.setter
-    def zl_e(self, zl_e):
-        if isinstance(zl_e, np.ndarray):
-            self.__zl_e = zl_e
-        else:
-            raise Exception('Invalid zl_e value, expected numpy array. Exiting.')
-
-    @zu_e.setter
-    def zu_e(self, zu_e):
-        if isinstance(zu_e, np.ndarray):
-            self.__zu_e = zu_e
-        else:
-            raise Exception('Invalid zu_e value, expected numpy array. Exiting.')
-
-    @cost_ext_fun_type_e.setter
-    def cost_ext_fun_type_e(self, cost_ext_fun_type_e):
-        if cost_ext_fun_type_e in ['casadi', 'generic']:
-            self.__cost_ext_fun_type_e = cost_ext_fun_type_e
-        else:
-            raise Exception('Invalid cost_ext_fun_type_e value, expected numpy array. Exiting.')
-
-    def set(self, attr, value):
-        setattr(self, attr, value)
-
-
-def print_J_to_idx_note():
-    print("NOTE: J* matrix is converted to zero based vector idx* vector, which is returned here.")
-
-
-class AcadosOcpConstraints:
-    """
-    class containing the description of the constraints
-    """
-    def __init__(self):
-        self.__constr_type   = 'BGH'
-        self.__constr_type_e = 'BGH'
-        # initial x
-        self.__lbx_0   = np.array([])
-        self.__ubx_0   = np.array([])
-        self.__idxbx_0 = np.array([])
-        self.__idxbxe_0 = np.array([])
-        # state bounds
-        self.__lbx     = np.array([])
-        self.__ubx     = np.array([])
-        self.__idxbx   = np.array([])
-        # bounds on x at shooting node N
-        self.__lbx_e   = np.array([])
-        self.__ubx_e   = np.array([])
-        self.__idxbx_e = np.array([])
-        # bounds on u
-        self.__lbu     = np.array([])
-        self.__ubu     = np.array([])
-        self.__idxbu   = np.array([])
-        # polytopic constraints
-        self.__lg      = np.array([])
-        self.__ug      = np.array([])
-        self.__D       = np.zeros((0,0))
-        self.__C       = np.zeros((0,0))
-        # polytopic constraints at shooting node N
-        self.__C_e     = np.zeros((0,0))
-        self.__lg_e    = np.array([])
-        self.__ug_e    = np.array([])
-        # nonlinear constraints
-        self.__lh      = np.array([])
-        self.__uh      = np.array([])
-        # nonlinear constraints at shooting node N
-        self.__uh_e    = np.array([])
-        self.__lh_e    = np.array([])
-        # convex-over-nonlinear constraints
-        self.__lphi    = np.array([])
-        self.__uphi    = np.array([])
-        # nonlinear constraints at shooting node N
-        self.__uphi_e = np.array([])
-        self.__lphi_e = np.array([])
-        # SLACK BOUNDS
-        # soft bounds on x
-        self.__lsbx   = np.array([])
-        self.__usbx   = np.array([])
-        self.__idxsbx = np.array([])
-        # soft bounds on u
-        self.__lsbu   = np.array([])
-        self.__usbu   = np.array([])
-        self.__idxsbu = np.array([])
-        # soft bounds on x at shooting node N
-        self.__lsbx_e  = np.array([])
-        self.__usbx_e  = np.array([])
-        self.__idxsbx_e= np.array([])
-        # soft bounds on general linear constraints
-        self.__lsg    = np.array([])
-        self.__usg    = np.array([])
-        self.__idxsg  = np.array([])
-        # soft bounds on nonlinear constraints
-        self.__lsh    = np.array([])
-        self.__ush    = np.array([])
-        self.__idxsh  = np.array([])
-        # soft bounds on nonlinear constraints
-        self.__lsphi  = np.array([])
-        self.__usphi  = np.array([])
-        self.__idxsphi  = np.array([])
-        # soft bounds on general linear constraints at shooting node N
-        self.__lsg_e    = np.array([])
-        self.__usg_e    = np.array([])
-        self.__idxsg_e  = np.array([])
-        # soft bounds on nonlinear constraints at shooting node N
-        self.__lsh_e    = np.array([])
-        self.__ush_e    = np.array([])
-        self.__idxsh_e  = np.array([])
-        # soft bounds on nonlinear constraints at shooting node N
-        self.__lsphi_e    = np.array([])
-        self.__usphi_e    = np.array([])
-        self.__idxsphi_e  = np.array([])
-
-
-    # types
-    @property
-    def constr_type(self):
-        """Constraints type for shooting nodes (0 to N-1). string in {BGH, BGP}.
-        Default: BGH; BGP is for convex over nonlinear."""
-        return self.__constr_type
-
-    @property
-    def constr_type_e(self):
-        """Constraints type for terminal shooting node N. string in {BGH, BGP}.
-        Default: BGH; BGP is for convex over nonlinear."""
-        return self.__constr_type_e
-
-    # initial bounds on x
-    @property
-    def lbx_0(self):
-        """:math:`\\underline{x_0}` - lower bounds on x at initial stage 0.
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`."""
-        return self.__lbx_0
-
-    @property
-    def ubx_0(self):
-        """:math:`\\bar{x_0}` - upper bounds on x at initial stage 0.
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`"""
-        return self.__ubx_0
-
-    @property
-    def Jbx_0(self):
-        """:math:`J_{bx,0}` - matrix coefficient for bounds on x at initial stage 0.
-        Translated internally to :py:attr:`idxbx_0`"""
-        print_J_to_idx_note()
-        return self.__idxbx_0
-
-    @property
-    def idxbx_0(self):
-        """Indices of bounds on x at initial stage 0
-        -- can be set automatically via x0.
-        Can be set by using :py:attr:`Jbx_0`.
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`"""
-        return self.__idxbx_0
-
-    @property
-    def idxbxe_0(self):
-        """Indices of bounds on x0 that are equalities -- can be set automatically via :py:attr:`x0`.
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`"""
-        return self.__idxbxe_0
-
-    # bounds on x
-    @property
-    def lbx(self):
-        """:math:`\\underline{x}` - lower bounds on x at intermediate shooting nodes (1 to N-1).
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`"""
-        return self.__lbx
-
-    @property
-    def ubx(self):
-        """:math:`\\bar{x}` - upper bounds on x at intermediate shooting nodes (1 to N-1).
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`"""
-        return self.__ubx
-
-    @property
-    def idxbx(self):
-        """indices of bounds on x (defines :math:`J_{bx}`) at intermediate shooting nodes (1 to N-1).
-        Can be set by using :py:attr:`Jbx`.
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`"""
-        return self.__idxbx
-
-    @property
-    def Jbx(self):
-        """:math:`J_{bx}` - matrix coefficient for bounds on x
-        at intermediate shooting nodes (1 to N-1).
-        Translated internally into :py:attr:`idxbx`."""
-        print_J_to_idx_note()
-        return self.__idxbx
-
-    # bounds on x at shooting node N
-    @property
-    def lbx_e(self):
-        """:math:`\\underline{x}^e` - lower bounds on x at terminal shooting node N.
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`"""
-        return self.__lbx_e
-
-    @property
-    def ubx_e(self):
-        """:math:`\\bar{x}^e` - upper bounds on x at terminal shooting node N.
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`"""
-        return self.__ubx_e
-
-    @property
-    def idxbx_e(self):
-        """Indices for bounds on x at terminal shooting node N (defines :math:`J_{bx}^e`).
-        Can be set by using :py:attr:`Jbx_e`.
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`"""
-        return self.__idxbx_e
-
-    @property
-    def Jbx_e(self):
-        """:math:`J_{bx}^e` matrix coefficient for bounds on x at terminal shooting node N.
-        Translated internally into :py:attr:`idxbx_e`."""
-        print_J_to_idx_note()
-        return self.__idxbx_e
-
-    # bounds on u
-    @property
-    def lbu(self):
-        """:math:`\\underline{u}` - lower bounds on u at shooting nodes (0 to N-1).
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`
-        """
-        return self.__lbu
-
-    @property
-    def ubu(self):
-        """:math:`\\bar{u}` - upper bounds on u at shooting nodes (0 to N-1).
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`
-        """
-        return self.__ubu
-
-    @property
-    def idxbu(self):
-        """Indices of bounds on u (defines :math:`J_{bu}`) at shooting nodes (0 to N-1).
-        Can be set by using :py:attr:`Jbu`.
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`
-        """
-        return self.__idxbu
-
-    @property
-    def Jbu(self):
-        """:math:`J_{bu}` - matrix coefficient for bounds on u at shooting nodes (0 to N-1).
-        Translated internally to :py:attr:`idxbu`.
-        """
-        print_J_to_idx_note()
-        return self.__idxbu
-
-    # polytopic constraints
-    @property
-    def C(self):
-        """:math:`C` - C matrix in :math:`\\underline{g} \\leq D \, u + C \, x \\leq \\bar{g}`
-        at shooting nodes (0 to N-1).
-        Type: :code:`np.ndarray`; default: :code:`np.array((0,0))`.
-        """
-        return self.__C
-
-    @property
-    def D(self):
-        """:math:`D` - D matrix in :math:`\\underline{g} \\leq D \, u + C \, x \\leq \\bar{g}`
-        at shooting nodes (0 to N-1).
-        Type: :code:`np.ndarray`; default: :code:`np.array((0,0))`
-        """
-        return self.__D
-
-    @property
-    def lg(self):
-        """:math:`\\underline{g}` - lower bound for general polytopic inequalities
-        at shooting nodes (0 to N-1).
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`
-        """
-        return self.__lg
-
-    @property
-    def ug(self):
-        """:math:`\\bar{g}` - upper bound for general polytopic inequalities
-        at shooting nodes (0 to N-1).
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`.
-        """
-        return self.__ug
-
-    # polytopic constraints at shooting node N
-    @property
-    def C_e(self):
-        """:math:`C^e` - C matrix at terminal shooting node N.
-        Type: :code:`np.ndarray`; default: :code:`np.array((0,0))`.
-        """
-        return self.__C_e
-
-    @property
-    def lg_e(self):
-        """:math:`\\underline{g}^e` - lower bound on general polytopic inequalities
-        at terminal shooting node N.
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`.
-        """
-        return self.__lg_e
-
-    @property
-    def ug_e(self):
-        """:math:`\\bar{g}^e` - upper bound on general polytopic inequalities
-        at terminal shooting node N.
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`.
-        """
-        return self.__ug_e
-
-
-    # nonlinear constraints
-    @property
-    def lh(self):
-        """:math:`\\underline{h}` - lower bound for nonlinear inequalities
-        at shooting nodes (0 to N-1).
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`.
-        """
-        return self.__lh
-
-    @property
-    def uh(self):
-        """:math:`\\bar{h}` - upper bound for nonlinear inequalities
-        at shooting nodes (0 to N-1).
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`.
-        """
-        return self.__uh
-
-    # nonlinear constraints at shooting node N
-    @property
-    def lh_e(self):
-        """:math:`\\underline{h}^e` - lower bound on nonlinear inequalities
-        at terminal shooting node N.
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`.
-        """
-        return self.__lh_e
-
-    @property
-    def uh_e(self):
-        """:math:`\\bar{h}^e` - upper bound on nonlinear inequalities
-        at terminal shooting node N.
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`.
-        """
-        return self.__uh_e
-
-    # convex-over-nonlinear constraints
-    @property
-    def lphi(self):
-        """:math:`\\underline{\phi}` - lower bound for convex-over-nonlinear inequalities
-        at shooting nodes (0 to N-1).
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`.
-        """
-        return self.__lphi
-
-    @property
-    def uphi(self):
-        """:math:`\\bar{\phi}` - upper bound for convex-over-nonlinear inequalities
-        at shooting nodes (0 to N-1).
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`.
-        """
-        return self.__uphi
-
-    # convex-over-nonlinear constraints at shooting node N
-    @property
-    def lphi_e(self):
-        """:math:`\\underline{\phi}^e` - lower bound on convex-over-nonlinear inequalities
-        at terminal shooting node N.
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`.
-        """
-        return self.__lphi_e
-
-    @property
-    def uphi_e(self):
-        """:math:`\\bar{\phi}^e` - upper bound on convex-over-nonlinear inequalities
-        at terminal shooting node N.
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`.
-        """
-        return self.__uphi_e
-
-
-    # SLACK bounds
-    # soft bounds on x
-    @property
-    def lsbx(self):
-        """Lower bounds on slacks corresponding to soft lower bounds on x
-        at stages (1 to N-1);
-        not required - zeros by default"""
-        return self.__lsbx
-
-    @property
-    def usbx(self):
-        """Lower bounds on slacks corresponding to soft upper bounds on x
-        at stages (1 to N-1);
-        not required - zeros by default"""
-        return self.__usbx
-
-    @property
-    def idxsbx(self):
-        """Indices of soft bounds on x within the indices of bounds on x
-        at stages (1 to N-1).
-        Can be set by using :py:attr:`Jsbx`.
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`"""
-        return self.__idxsbx
-
-    @property
-    def Jsbx(self):
-        """:math:`J_{sbx}` - matrix coefficient for soft bounds on x
-        at stages (1 to N-1);
-        Translated internally into :py:attr:`idxsbx`."""
-        print_J_to_idx_note()
-        return self.__idxsbx
-
-    # soft bounds on u
-    @property
-    def lsbu(self):
-        """Lower bounds on slacks corresponding to soft lower bounds on u
-        at stages (0 to N-1).
-        Not required - zeros by default."""
-        return self.__lsbu
-
-    @property
-    def usbu(self):
-        """Lower bounds on slacks corresponding to soft upper bounds on u
-        at stages (0 to N-1);
-        not required - zeros by default"""
-        return self.__usbu
-
-    @property
-    def idxsbu(self):
-        """Indices of soft bounds on u within the indices of bounds on u
-        at stages (0 to N-1).
-        Can be set by using :py:attr:`Jsbu`.
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`"""
-        return self.__idxsbu
-
-    @property
-    def Jsbu(self):
-        """:math:`J_{sbu}` - matrix coefficient for soft bounds on u
-        at stages (0 to N-1);
-        internally translated into :py:attr:`idxsbu`"""
-        print_J_to_idx_note()
-        return self.__idxsbu
-
-    # soft bounds on x at shooting node N
-    @property
-    def lsbx_e(self):
-        """Lower bounds on slacks corresponding to soft lower bounds on x at shooting node N.
-        Not required - zeros by default"""
-        return self.__lsbx_e
-
-    @property
-    def usbx_e(self):
-        """Lower bounds on slacks corresponding to soft upper bounds on x at shooting node N.
-        Not required - zeros by default"""
-        return self.__usbx_e
-
-    @property
-    def idxsbx_e(self):
-        """Indices of soft bounds on x at shooting node N, within the indices of bounds on x at terminal shooting node N.
-        Can be set by using :py:attr:`Jsbx_e`.
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`"""
-        return self.__idxsbx_e
-
-    @property
-    def Jsbx_e(self):
-        """:math:`J_{sbx}^e` - matrix coefficient for soft bounds on x at terminal shooting node N.
-        Translated internally to :py:attr:`idxsbx_e`"""
-        print_J_to_idx_note()
-        return self.__idxsbx_e
-
-    # soft general linear constraints
-    @property
-    def lsg(self):
-        """Lower bounds on slacks corresponding to soft lower bounds for general linear constraints
-        at stages (0 to N-1).
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`
-        """
-        return self.__lsg
-
-    @property
-    def usg(self):
-        """Lower bounds on slacks corresponding to soft upper bounds for general linear constraints.
-        Not required - zeros by default"""
-        return self.__usg
-
-    @property
-    def idxsg(self):
-        """Indices of soft general linear constraints within the indices of general linear constraints.
-        Can be set by using :py:attr:`Jsg`.
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`"""
-        return self.__idxsg
-
-    @property
-    def Jsg(self):
-        """:math:`J_{sg}` - matrix coefficient for soft bounds on general linear constraints.
-        Translated internally to :py:attr:`idxsg`"""
-        print_J_to_idx_note()
-        return self.__idxsg
-
-    # soft nonlinear constraints
-    @property
-    def lsh(self):
-        """Lower bounds on slacks corresponding to soft lower bounds for nonlinear constraints.
-        Not required - zeros by default"""
-        return self.__lsh
-
-    @property
-    def ush(self):
-        """Lower bounds on slacks corresponding to soft upper bounds for nonlinear constraints.
-        Not required - zeros by default"""
-        return self.__ush
-
-    @property
-    def idxsh(self):
-        """Indices of soft nonlinear constraints within the indices of nonlinear constraints.
-        Can be set by using :py:attr:`Jbx`.
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`"""
-        return self.__idxsh
-
-    @property
-    def Jsh(self):
-        """:math:`J_{sh}` - matrix coefficient for soft bounds on nonlinear constraints.
-        Translated internally to :py:attr:`idxsh`"""
-        print_J_to_idx_note()
-        return self.__idxsh
-
-    # soft bounds on convex-over-nonlinear constraints
-    @property
-    def lsphi(self):
-        """Lower bounds on slacks corresponding to soft lower bounds for convex-over-nonlinear constraints.
-        Not required - zeros by default"""
-        return self.__lsphi
-
-    @property
-    def usphi(self):
-        """Lower bounds on slacks corresponding to soft upper bounds for convex-over-nonlinear constraints.
-        Not required - zeros by default"""
-        return self.__usphi
-
-    @property
-    def idxsphi(self):
-        """Indices of soft convex-over-nonlinear constraints within the indices of nonlinear constraints.
-        Can be set by using :py:attr:`Jsphi`.
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`"""
-        return self.__idxsphi
-
-    @property
-    def Jsphi(self):
-        """:math:`J_{s, \phi}` - matrix coefficient for soft bounds on convex-over-nonlinear constraints.
-        Translated internally into :py:attr:`idxsphi`."""
-        print_J_to_idx_note()
-        return self.__idxsphi
-
-
-    # soft bounds on general linear constraints at shooting node N
-    @property
-    def lsg_e(self):
-        """Lower bounds on slacks corresponding to soft lower bounds for general linear constraints at shooting node N.
-        Not required - zeros by default"""
-        return self.__lsg_e
-
-    @property
-    def usg_e(self):
-        """Lower bounds on slacks corresponding to soft upper bounds for general linear constraints at shooting node N.
-        Not required - zeros by default"""
-        return self.__usg_e
-
-    @property
-    def idxsg_e(self):
-        """Indices of soft general linear constraints at shooting node N within the indices of general linear constraints at shooting node N.
-        Can be set by using :py:attr:`Jsg_e`."""
-        return self.__idxsg_e
-
-    @property
-    def Jsg_e(self):
-        """:math:`J_{s,h}^e` - matrix coefficient for soft bounds on general linear constraints at terminal shooting node N.
-        Translated internally to :py:attr:`idxsg_e`"""
-        print_J_to_idx_note()
-        return self.__idxsg_e
-
-
-    # soft bounds on nonlinear constraints at shooting node N
-    @property
-    def lsh_e(self):
-        """Lower bounds on slacks corresponding to soft lower bounds for nonlinear constraints at terminal shooting node N.
-        Not required - zeros by default"""
-        return self.__lsh_e
-
-    @property
-    def ush_e(self):
-        """Lower bounds on slacks corresponding to soft upper bounds for nonlinear constraints at terminal shooting node N.
-        Not required - zeros by default"""
-        return self.__ush_e
-
-    @property
-    def idxsh_e(self):
-        """Indices of soft nonlinear constraints at shooting node N within the indices of nonlinear constraints at terminal shooting node N.
-        Can be set by using :py:attr:`Jsh_e`."""
-        return self.__idxsh_e
-
-    @property
-    def Jsh_e(self):
-        """:math:`J_{s,h}^e` - matrix coefficient for soft bounds on nonlinear constraints at terminal shooting node N; fills :py:attr:`idxsh_e`"""
-        print_J_to_idx_note()
-        return self.__idxsh_e
-
-    # soft bounds on convex-over-nonlinear constraints at shooting node N
-    @property
-    def lsphi_e(self):
-        """Lower bounds on slacks corresponding to soft lower bounds for convex-over-nonlinear constraints at terminal shooting node N.
-        Not required - zeros by default"""
-        return self.__lsphi_e
-
-    @property
-    def usphi_e(self):
-        """Lower bounds on slacks corresponding to soft upper bounds for convex-over-nonlinear constraints at terminal shooting node N.
-        Not required - zeros by default"""
-        return self.__usphi_e
-
-    @property
-    def idxsphi_e(self):
-        """Indices of soft nonlinear constraints at shooting node N within the indices of nonlinear constraints at terminal shooting node N.
-        Can be set by using :py:attr:`Jsphi_e`.
-        Type: :code:`np.ndarray`; default: :code:`np.array([])`"""
-        return self.__idxsphi_e
-
-    @property
-    def Jsphi_e(self):
-        """:math:`J_{sh}^e` - matrix coefficient for soft bounds on convex-over-nonlinear constraints at shooting node N.
-        Translated internally to :py:attr:`idxsphi_e`"""
-        print_J_to_idx_note()
-        return self.__idxsphi_e
-
-    @property
-    def x0(self):
-        """:math:`x_0 \\in \mathbb{R}^{n_x}` - initial state --
-        Translated internally to :py:attr:`idxbx_0`, :py:attr:`lbx_0`, :py:attr:`ubx_0`, :py:attr:`idxbxe_0` """
-        print("x0 is converted to lbx_0, ubx_0, idxbx_0")
-        print("idxbx_0: ", self.__idxbx_0)
-        print("lbx_0: ", self.__lbx_0)
-        print("ubx_0: ", self.__ubx_0)
-        print("idxbxe_0: ", self.__idxbxe_0)
-        return None
-
-    # SETTERS
-    @constr_type.setter
-    def constr_type(self, constr_type):
-        constr_types = ('BGH', 'BGP')
-        if constr_type in constr_types:
-            self.__constr_type = constr_type
-        else:
-            raise Exception('Invalid constr_type value. Possible values are:\n\n' \
-                    + ',\n'.join(constr_types) + '.\n\nYou have: ' + constr_type + '.\n\nExiting.')
-
-    @constr_type_e.setter
-    def constr_type_e(self, constr_type_e):
-        constr_types = ('BGH', 'BGP')
-        if constr_type_e in constr_types:
-            self.__constr_type_e = constr_type_e
-        else:
-            raise Exception('Invalid constr_type_e value. Possible values are:\n\n' \
-                    + ',\n'.join(constr_types) + '.\n\nYou have: ' + constr_type_e + '.\n\nExiting.')
-
-    # initial x
-    @lbx_0.setter
-    def lbx_0(self, lbx_0):
-        if isinstance(lbx_0, np.ndarray):
-            self.__lbx_0 = lbx_0
-        else:
-            raise Exception('Invalid lbx_0 value. Exiting.')
-
-    @ubx_0.setter
-    def ubx_0(self, ubx_0):
-        if isinstance(ubx_0, np.ndarray):
-            self.__ubx_0 = ubx_0
-        else:
-            raise Exception('Invalid ubx_0 value. Exiting.')
-
-    @idxbx_0.setter
-    def idxbx_0(self, idxbx_0):
-        if isinstance(idxbx_0, np.ndarray):
-            self.__idxbx_0 = idxbx_0
-        else:
-            raise Exception('Invalid idxbx_0 value. Exiting.')
-
-    @Jbx_0.setter
-    def Jbx_0(self, Jbx_0):
-        if isinstance(Jbx_0, np.ndarray):
-            self.__idxbx_0 = J_to_idx(Jbx_0)
-        else:
-            raise Exception('Invalid Jbx_0 value. Exiting.')
-
-    @idxbxe_0.setter
-    def idxbxe_0(self, idxbxe_0):
-        if isinstance(idxbxe_0, np.ndarray):
-            self.__idxbxe_0 = idxbxe_0
-        else:
-            raise Exception('Invalid idxbxe_0 value. Exiting.')
-
-
-    @x0.setter
-    def x0(self, x0):
-        if isinstance(x0, np.ndarray):
-            self.__lbx_0 = x0
-            self.__ubx_0 = x0
-            self.__idxbx_0 = np.arange(x0.size)
-            self.__idxbxe_0 = np.arange(x0.size)
-        else:
-            raise Exception('Invalid x0 value. Exiting.')
-
-    # bounds on x
-    @lbx.setter
-    def lbx(self, lbx):
-        if isinstance(lbx, np.ndarray):
-            self.__lbx = lbx
-        else:
-            raise Exception('Invalid lbx value. Exiting.')
-
-    @ubx.setter
-    def ubx(self, ubx):
-        if isinstance(ubx, np.ndarray):
-            self.__ubx = ubx
-        else:
-            raise Exception('Invalid ubx value. Exiting.')
-
-    @idxbx.setter
-    def idxbx(self, idxbx):
-        if isinstance(idxbx, np.ndarray):
-            self.__idxbx = idxbx
-        else:
-            raise Exception('Invalid idxbx value. Exiting.')
-
-    @Jbx.setter
-    def Jbx(self, Jbx):
-        if isinstance(Jbx, np.ndarray):
-            self.__idxbx = J_to_idx(Jbx)
-        else:
-            raise Exception('Invalid Jbx value. Exiting.')
-
-    # bounds on u
-    @lbu.setter
-    def lbu(self, lbu):
-        if isinstance(lbu, np.ndarray):
-            self.__lbu = lbu
-        else:
-            raise Exception('Invalid lbu value. Exiting.')
-
-    @ubu.setter
-    def ubu(self, ubu):
-        if isinstance(ubu, np.ndarray):
-            self.__ubu = ubu
-        else:
-            raise Exception('Invalid ubu value. Exiting.')
-
-    @idxbu.setter
-    def idxbu(self, idxbu):
-        if isinstance(idxbu, np.ndarray):
-            self.__idxbu = idxbu
-        else:
-            raise Exception('Invalid idxbu value. Exiting.')
-
-    @Jbu.setter
-    def Jbu(self, Jbu):
-        if isinstance(Jbu, np.ndarray):
-            self.__idxbu = J_to_idx(Jbu)
-        else:
-            raise Exception('Invalid Jbu value. Exiting.')
-
-    # bounds on x at shooting node N
-    @lbx_e.setter
-    def lbx_e(self, lbx_e):
-        if isinstance(lbx_e, np.ndarray):
-            self.__lbx_e = lbx_e
-        else:
-            raise Exception('Invalid lbx_e value. Exiting.')
-
-    @ubx_e.setter
-    def ubx_e(self, ubx_e):
-        if isinstance(ubx_e, np.ndarray):
-            self.__ubx_e = ubx_e
-        else:
-            raise Exception('Invalid ubx_e value. Exiting.')
-
-    @idxbx_e.setter
-    def idxbx_e(self, idxbx_e):
-        if isinstance(idxbx_e, np.ndarray):
-            self.__idxbx_e = idxbx_e
-        else:
-            raise Exception('Invalid idxbx_e value. Exiting.')
-
-    @Jbx_e.setter
-    def Jbx_e(self, Jbx_e):
-        if isinstance(Jbx_e, np.ndarray):
-            self.__idxbx_e = J_to_idx(Jbx_e)
-        else:
-            raise Exception('Invalid Jbx_e value. Exiting.')
-
-    # polytopic constraints
-    @D.setter
-    def D(self, D):
-        if isinstance(D, np.ndarray) and len(D.shape) == 2:
-            self.__D = D
-        else:
-            raise Exception('Invalid constraint D value.' \
-                + 'Should be 2 dimensional numpy array. Exiting.')
-
-    @C.setter
-    def C(self, C):
-        if isinstance(C, np.ndarray) and len(C.shape) == 2:
-            self.__C = C
-        else:
-            raise Exception('Invalid constraint C value.' \
-                + 'Should be 2 dimensional numpy array. Exiting.')
-
-    @lg.setter
-    def lg(self, lg):
-        if isinstance(lg, np.ndarray):
-            self.__lg = lg
-        else:
-            raise Exception('Invalid lg value. Exiting.')
-
-    @ug.setter
-    def ug(self, ug):
-        if isinstance(ug, np.ndarray):
-            self.__ug = ug
-        else:
-            raise Exception('Invalid ug value. Exiting.')
-
-    # polytopic constraints at shooting node N
-    @C_e.setter
-    def C_e(self, C_e):
-        if isinstance(C_e, np.ndarray) and len(C_e.shape) == 2:
-            self.__C_e = C_e
-        else:
-            raise Exception('Invalid constraint C_e value.' \
-                + 'Should be 2 dimensional numpy array. Exiting.')
-
-    @lg_e.setter
-    def lg_e(self, lg_e):
-        if isinstance(lg_e, np.ndarray):
-            self.__lg_e = lg_e
-        else:
-            raise Exception('Invalid lg_e value. Exiting.')
-
-    @ug_e.setter
-    def ug_e(self, ug_e):
-        if isinstance(ug_e, np.ndarray):
-            self.__ug_e = ug_e
-        else:
-            raise Exception('Invalid ug_e value. Exiting.')
-
-    # nonlinear constraints
-    @lh.setter
-    def lh(self, lh):
-        if isinstance(lh, np.ndarray):
-            self.__lh = lh
-        else:
-            raise Exception('Invalid lh value. Exiting.')
-
-    @uh.setter
-    def uh(self, uh):
-        if isinstance(uh, np.ndarray):
-            self.__uh = uh
-        else:
-            raise Exception('Invalid uh value. Exiting.')
-
-    # convex-over-nonlinear constraints
-    @lphi.setter
-    def lphi(self, lphi):
-        if isinstance(lphi, np.ndarray):
-            self.__lphi = lphi
-        else:
-            raise Exception('Invalid lphi value. Exiting.')
-
-    @uphi.setter
-    def uphi(self, uphi):
-        if isinstance(uphi, np.ndarray):
-            self.__uphi = uphi
-        else:
-            raise Exception('Invalid uphi value. Exiting.')
-
-    # nonlinear constraints at shooting node N
-    @lh_e.setter
-    def lh_e(self, lh_e):
-        if isinstance(lh_e, np.ndarray):
-            self.__lh_e = lh_e
-        else:
-            raise Exception('Invalid lh_e value. Exiting.')
-
-    @uh_e.setter
-    def uh_e(self, uh_e):
-        if isinstance(uh_e, np.ndarray):
-            self.__uh_e = uh_e
-        else:
-            raise Exception('Invalid uh_e value. Exiting.')
-
-    # convex-over-nonlinear constraints at shooting node N
-    @lphi_e.setter
-    def lphi_e(self, lphi_e):
-        if isinstance(lphi_e, np.ndarray):
-            self.__lphi_e = lphi_e
-        else:
-            raise Exception('Invalid lphi_e value. Exiting.')
-
-    @uphi_e.setter
-    def uphi_e(self, uphi_e):
-        if isinstance(uphi_e, np.ndarray):
-            self.__uphi_e = uphi_e
-        else:
-            raise Exception('Invalid uphi_e value. Exiting.')
-
-    # SLACK bounds
-    # soft bounds on x
-    @lsbx.setter
-    def lsbx(self, lsbx):
-        if isinstance(lsbx, np.ndarray):
-            self.__lsbx = lsbx
-        else:
-            raise Exception('Invalid lsbx value. Exiting.')
-
-    @usbx.setter
-    def usbx(self, usbx):
-        if isinstance(usbx, np.ndarray):
-            self.__usbx = usbx
-        else:
-            raise Exception('Invalid usbx value. Exiting.')
-
-    @idxsbx.setter
-    def idxsbx(self, idxsbx):
-        if isinstance(idxsbx, np.ndarray):
-            self.__idxsbx = idxsbx
-        else:
-            raise Exception('Invalid idxsbx value. Exiting.')
-
-    @Jsbx.setter
-    def Jsbx(self, Jsbx):
-        if isinstance(Jsbx, np.ndarray):
-            self.__idxsbx = J_to_idx_slack(Jsbx)
-        else:
-            raise Exception('Invalid Jsbx value, expected numpy array. Exiting.')
-
-    # soft bounds on u
-    @lsbu.setter
-    def lsbu(self, lsbu):
-        if isinstance(lsbu, np.ndarray):
-            self.__lsbu = lsbu
-        else:
-            raise Exception('Invalid lsbu value. Exiting.')
-
-    @usbu.setter
-    def usbu(self, usbu):
-        if isinstance(usbu, np.ndarray):
-            self.__usbu = usbu
-        else:
-            raise Exception('Invalid usbu value. Exiting.')
-
-    @idxsbu.setter
-    def idxsbu(self, idxsbu):
-        if isinstance(idxsbu, np.ndarray):
-            self.__idxsbu = idxsbu
-        else:
-            raise Exception('Invalid idxsbu value. Exiting.')
-
-    @Jsbu.setter
-    def Jsbu(self, Jsbu):
-        if isinstance(Jsbu, np.ndarray):
-            self.__idxsbu = J_to_idx_slack(Jsbu)
-        else:
-            raise Exception('Invalid Jsbu value. Exiting.')
-
-    # soft bounds on x at shooting node N
-    @lsbx_e.setter
-    def lsbx_e(self, lsbx_e):
-        if isinstance(lsbx_e, np.ndarray):
-            self.__lsbx_e = lsbx_e
-        else:
-            raise Exception('Invalid lsbx_e value. Exiting.')
-
-    @usbx_e.setter
-    def usbx_e(self, usbx_e):
-        if isinstance(usbx_e, np.ndarray):
-            self.__usbx_e = usbx_e
-        else:
-            raise Exception('Invalid usbx_e value. Exiting.')
-
-    @idxsbx_e.setter
-    def idxsbx_e(self, idxsbx_e):
-        if isinstance(idxsbx_e, np.ndarray):
-            self.__idxsbx_e = idxsbx_e
-        else:
-            raise Exception('Invalid idxsbx_e value. Exiting.')
-
-    @Jsbx_e.setter
-    def Jsbx_e(self, Jsbx_e):
-        if isinstance(Jsbx_e, np.ndarray):
-            self.__idxsbx_e = J_to_idx_slack(Jsbx_e)
-        else:
-            raise Exception('Invalid Jsbx_e value. Exiting.')
-
-
-    # soft bounds on general linear constraints
-    @lsg.setter
-    def lsg(self, lsg):
-        if isinstance(lsg, np.ndarray):
-            self.__lsg = lsg
-        else:
-            raise Exception('Invalid lsg value. Exiting.')
-
-    @usg.setter
-    def usg(self, usg):
-        if isinstance(usg, np.ndarray):
-            self.__usg = usg
-        else:
-            raise Exception('Invalid usg value. Exiting.')
-
-    @idxsg.setter
-    def idxsg(self, idxsg):
-        if isinstance(idxsg, np.ndarray):
-            self.__idxsg = idxsg
-        else:
-            raise Exception('Invalid idxsg value. Exiting.')
-
-    @Jsg.setter
-    def Jsg(self, Jsg):
-        if isinstance(Jsg, np.ndarray):
-            self.__idxsg = J_to_idx_slack(Jsg)
-        else:
-            raise Exception('Invalid Jsg value, expected numpy array. Exiting.')
-
-
-    # soft bounds on nonlinear constraints
-    @lsh.setter
-    def lsh(self, lsh):
-        if isinstance(lsh, np.ndarray):
-            self.__lsh = lsh
-        else:
-            raise Exception('Invalid lsh value. Exiting.')
-
-    @ush.setter
-    def ush(self, ush):
-        if isinstance(ush, np.ndarray):
-            self.__ush = ush
-        else:
-            raise Exception('Invalid ush value. Exiting.')
-
-    @idxsh.setter
-    def idxsh(self, idxsh):
-        if isinstance(idxsh, np.ndarray):
-            self.__idxsh = idxsh
-        else:
-            raise Exception('Invalid idxsh value. Exiting.')
-
-
-    @Jsh.setter
-    def Jsh(self, Jsh):
-        if isinstance(Jsh, np.ndarray):
-            self.__idxsh = J_to_idx_slack(Jsh)
-        else:
-            raise Exception('Invalid Jsh value, expected numpy array. Exiting.')
-
-    # soft bounds on convex-over-nonlinear constraints
-    @lsphi.setter
-    def lsphi(self, lsphi):
-        if isinstance(lsphi, np.ndarray):
-            self.__lsphi = lsphi
-        else:
-            raise Exception('Invalid lsphi value. Exiting.')
-
-    @usphi.setter
-    def usphi(self, usphi):
-        if isinstance(usphi, np.ndarray):
-            self.__usphi = usphi
-        else:
-            raise Exception('Invalid usphi value. Exiting.')
-
-    @idxsphi.setter
-    def idxsphi(self, idxsphi):
-        if isinstance(idxsphi, np.ndarray):
-            self.__idxsphi = idxsphi
-        else:
-            raise Exception('Invalid idxsphi value. Exiting.')
-
-    @Jsphi.setter
-    def Jsphi(self, Jsphi):
-        if isinstance(Jsphi, np.ndarray):
-            self.__idxsphi = J_to_idx_slack(Jsphi)
-        else:
-            raise Exception('Invalid Jsphi value, expected numpy array. Exiting.')
-
-    # soft bounds on general linear constraints at shooting node N
-    @lsg_e.setter
-    def lsg_e(self, lsg_e):
-        if isinstance(lsg_e, np.ndarray):
-            self.__lsg_e = lsg_e
-        else:
-            raise Exception('Invalid lsg_e value. Exiting.')
-
-    @usg_e.setter
-    def usg_e(self, usg_e):
-        if isinstance(usg_e, np.ndarray):
-            self.__usg_e = usg_e
-        else:
-            raise Exception('Invalid usg_e value. Exiting.')
-
-    @idxsg_e.setter
-    def idxsg_e(self, idxsg_e):
-        if isinstance(idxsg_e, np.ndarray):
-            self.__idxsg_e = idxsg_e
-        else:
-            raise Exception('Invalid idxsg_e value. Exiting.')
-
-    @Jsg_e.setter
-    def Jsg_e(self, Jsg_e):
-        if isinstance(Jsg_e, np.ndarray):
-            self.__idxsg_e = J_to_idx_slack(Jsg_e)
-        else:
-            raise Exception('Invalid Jsg_e value, expected numpy array. Exiting.')
-
-    # soft bounds on nonlinear constraints at shooting node N
-    @lsh_e.setter
-    def lsh_e(self, lsh_e):
-        if isinstance(lsh_e, np.ndarray):
-            self.__lsh_e = lsh_e
-        else:
-            raise Exception('Invalid lsh_e value. Exiting.')
-
-    @ush_e.setter
-    def ush_e(self, ush_e):
-        if isinstance(ush_e, np.ndarray):
-            self.__ush_e = ush_e
-        else:
-            raise Exception('Invalid ush_e value. Exiting.')
-
-    @idxsh_e.setter
-    def idxsh_e(self, idxsh_e):
-        if isinstance(idxsh_e, np.ndarray):
-            self.__idxsh_e = idxsh_e
-        else:
-            raise Exception('Invalid idxsh_e value. Exiting.')
-
-    @Jsh_e.setter
-    def Jsh_e(self, Jsh_e):
-        if isinstance(Jsh_e, np.ndarray):
-            self.__idxsh_e = J_to_idx_slack(Jsh_e)
-        else:
-            raise Exception('Invalid Jsh_e value, expected numpy array. Exiting.')
-
-
-    # soft bounds on convex-over-nonlinear constraints at shooting node N
-    @lsphi_e.setter
-    def lsphi_e(self, lsphi_e):
-        if isinstance(lsphi_e, np.ndarray):
-            self.__lsphi_e = lsphi_e
-        else:
-            raise Exception('Invalid lsphi_e value. Exiting.')
-
-    @usphi_e.setter
-    def usphi_e(self, usphi_e):
-        if isinstance(usphi_e, np.ndarray):
-            self.__usphi_e = usphi_e
-        else:
-            raise Exception('Invalid usphi_e value. Exiting.')
-
-    @idxsphi_e.setter
-    def idxsphi_e(self, idxsphi_e):
-        if isinstance(idxsphi_e, np.ndarray):
-            self.__idxsphi_e = idxsphi_e
-        else:
-            raise Exception('Invalid idxsphi_e value. Exiting.')
-
-    @Jsphi_e.setter
-    def Jsphi_e(self, Jsphi_e):
-        if isinstance(Jsphi_e, np.ndarray):
-            self.__idxsphi_e = J_to_idx_slack(Jsphi_e)
-        else:
-            raise Exception('Invalid Jsphi_e value. Exiting.')
-
-    def set(self, attr, value):
-        setattr(self, attr, value)
-
-
-class AcadosOcpOptions:
-    """
-    class containing the description of the solver options
-    """
-    def __init__(self):
-        self.__qp_solver        = 'PARTIAL_CONDENSING_HPIPM'  # qp solver to be used in the NLP solver
-        self.__hessian_approx   = 'GAUSS_NEWTON'              # hessian approximation
-        self.__integrator_type  = 'ERK'                       # integrator type
-        self.__tf               = None                        # prediction horizon
-        self.__nlp_solver_type  = 'SQP_RTI'                   # NLP solver
-        self.__globalization = 'FIXED_STEP'
-        self.__nlp_solver_step_length = 1.0                   # fixed Newton step length
-        self.__levenberg_marquardt = 0.0
-        self.__collocation_type = 'GAUSS_LEGENDRE'
-        self.__sim_method_num_stages  = 4                     # number of stages in the integrator
-        self.__sim_method_num_steps   = 1                     # number of steps in the integrator
-        self.__sim_method_newton_iter = 3                     # number of Newton iterations in simulation method
-        self.__sim_method_jac_reuse = 0
-        self.__qp_solver_tol_stat = None                      # QP solver stationarity tolerance
-        self.__qp_solver_tol_eq   = None                      # QP solver equality tolerance
-        self.__qp_solver_tol_ineq = None                      # QP solver inequality
-        self.__qp_solver_tol_comp = None                      # QP solver complementarity
-        self.__qp_solver_iter_max = 50                        # QP solver max iter
-        self.__qp_solver_cond_N = None                        # QP solver: new horizon after partial condensing
-        self.__qp_solver_warm_start = 0
-        self.__nlp_solver_tol_stat = 1e-6                     # NLP solver stationarity tolerance
-        self.__nlp_solver_tol_eq   = 1e-6                     # NLP solver equality tolerance
-        self.__nlp_solver_tol_ineq = 1e-6                     # NLP solver inequality
-        self.__nlp_solver_tol_comp = 1e-6                     # NLP solver complementarity
-        self.__nlp_solver_max_iter = 100                      # NLP solver maximum number of iterations
-        self.__Tsim = None                                    # automatically calculated as tf/N
-        self.__print_level = 0                                # print level
-        self.__initialize_t_slacks = 0                        # possible values: 0, 1
-        self.__model_external_shared_lib_dir   = None         # path to the the .so lib
-        self.__model_external_shared_lib_name  = None         # name of the the .so lib
-        self.__regularize_method = None
-        self.__time_steps = None
-        self.__shooting_nodes = None
-        self.__exact_hess_cost = 1
-        self.__exact_hess_dyn = 1
-        self.__exact_hess_constr = 1
-        self.__ext_cost_num_hess = 0
-        self.__alpha_min = 0.05
-        self.__alpha_reduction = 0.7
-        self.__line_search_use_sufficient_descent = 0
-        self.__globalization_use_SOC = 0
-        self.__full_step_dual = 0
-        self.__eps_sufficient_descent = 1e-4
-
-
-    @property
-    def qp_solver(self):
-        """QP solver to be used in the NLP solver.
-        String in ('PARTIAL_CONDENSING_HPIPM', 'FULL_CONDENSING_QPOASES', 'FULL_CONDENSING_HPIPM', 'PARTIAL_CONDENSING_QPDUNES', 'PARTIAL_CONDENSING_OSQP').
-        Default: 'PARTIAL_CONDENSING_HPIPM'.
-        """
-        return self.__qp_solver
-
-    @property
-    def hessian_approx(self):
-        """Hessian approximation.
-        String in ('GAUSS_NEWTON', 'EXACT').
-        Default: 'GAUSS_NEWTON'.
-        """
-        return self.__hessian_approx
-
-    @property
-    def integrator_type(self):
-        """
-        Integrator type.
-        String in ('ERK', 'IRK', 'GNSF', 'DISCRETE', 'LIFTED_IRK').
-        Default: 'ERK'.
-        """
-        return self.__integrator_type
-
-    @property
-    def nlp_solver_type(self):
-        """NLP solver.
-        String in ('SQP', 'SQP_RTI').
-        Default: 'SQP_RTI'.
-        """
-        return self.__nlp_solver_type
-
-    @property
-    def globalization(self):
-        """Globalization type.
-        String in ('FIXED_STEP', 'MERIT_BACKTRACKING').
-        Default: 'FIXED_STEP'.
-
-        .. note:: preliminary implementation.
-        """
-        return self.__globalization
-
-    @property
-    def collocation_type(self):
-        """Collocation type: relevant for implicit integrators
-        -- string in {GAUSS_RADAU_IIA, GAUSS_LEGENDRE}.
-
-        Default: GAUSS_LEGENDRE
-        """
-        return self.__collocation_type
-
-    @property
-    def regularize_method(self):
-        """Regularization method for the Hessian.
-        String in ('NO_REGULARIZE', 'MIRROR', 'PROJECT', 'PROJECT_REDUC_HESS', 'CONVEXIFY') or :code:`None`.
-
-        Default: :code:`None`.
-        """
-        return self.__regularize_method
-
-    @property
-    def nlp_solver_step_length(self):
-        """
-        Fixed Newton step length.
-        Type: float > 0.
-        Default: 1.0.
-        """
-        return self.__nlp_solver_step_length
-
-    @property
-    def levenberg_marquardt(self):
-        """
-        Factor for LM regularization.
-        Type: float >= 0
-        Default: 0.0.
-        """
-        return self.__levenberg_marquardt
-
-    @property
-    def sim_method_num_stages(self):
-        """
-        Number of stages in the integrator.
-        Type: int > 0 or ndarray of ints > 0 of shape (N,).
-        Default: 4
-        """
-        return self.__sim_method_num_stages
-
-    @property
-    def sim_method_num_steps(self):
-        """
-        Number of steps in the integrator.
-        Type: int > 0 or ndarray of ints > 0 of shape (N,).
-        Default: 1
-        """
-        return self.__sim_method_num_steps
-
-    @property
-    def sim_method_newton_iter(self):
-        """
-        Number of Newton iterations in simulation method.
-        Type: int > 0
-        Default: 3
-        """
-        return self.__sim_method_newton_iter
-
-    @property
-    def sim_method_jac_reuse(self):
-        """
-        Integer determining if jacobians are reused within integrator or ndarray of ints > 0 of shape (N,).
-        0: False (no reuse); 1: True (reuse)
-        Default: 0
-        """
-        return self.__sim_method_jac_reuse
-
-    @property
-    def qp_solver_tol_stat(self):
-        """
-        QP solver stationarity tolerance.
-        Default: :code:`None`
-        """
-        return self.__qp_solver_tol_stat
-
-    @property
-    def qp_solver_tol_eq(self):
-        """
-        QP solver equality tolerance.
-        Default: :code:`None`
-        """
-        return self.__qp_solver_tol_eq
-
-    @property
-    def qp_solver_tol_ineq(self):
-        """
-        QP solver inequality.
-        Default: :code:`None`
-        """
-        return self.__qp_solver_tol_ineq
-
-    @property
-    def qp_solver_tol_comp(self):
-        """
-        QP solver complementarity.
-        Default: :code:`None`
-        """
-        return self.__qp_solver_tol_comp
-
-    @property
-    def qp_solver_cond_N(self):
-        """QP solver: New horizon after partial condensing.
-        Set to N by default -> no condensing."""
-        return self.__qp_solver_cond_N
-
-    @property
-    def qp_solver_warm_start(self):
-        """QP solver: Warm starting.
-        0: no warm start; 1: warm start; 2: hot start."""
-        return self.__qp_solver_warm_start
-
-    @property
-    def qp_solver_iter_max(self):
-        """
-        QP solver: maximum number of iterations.
-        Type: int > 0
-        Default: 50
-        """
-        return self.__qp_solver_iter_max
-
-    @property
-    def tol(self):
-        """
-        NLP solver tolerance. Sets or gets the max of :py:attr:`nlp_solver_tol_eq`,
-        :py:attr:`nlp_solver_tol_ineq`, :py:attr:`nlp_solver_tol_comp`
-        and :py:attr:`nlp_solver_tol_stat`.
-        """
-        return max([self.__nlp_solver_tol_eq, self.__nlp_solver_tol_ineq,\
-                    self.__nlp_solver_tol_comp, self.__nlp_solver_tol_stat])
-
-    @property
-    def qp_tol(self):
-        """
-        QP solver tolerance.
-        Sets all of the following at once or gets the max of
-        :py:attr:`qp_solver_tol_eq`, :py:attr:`qp_solver_tol_ineq`,
-        :py:attr:`qp_solver_tol_comp` and
-        :py:attr:`qp_solver_tol_stat`.
-        """
-        return max([self.__qp_solver_tol_eq, self.__qp_solver_tol_ineq,\
-                    self.__qp_solver_tol_comp, self.__qp_solver_tol_stat])
-
-    @property
-    def nlp_solver_tol_stat(self):
-        """
-        NLP solver stationarity tolerance.
-        Type: float > 0
-        Default: 1e-6
-        """
-        return self.__nlp_solver_tol_stat
-
-    @property
-    def nlp_solver_tol_eq(self):
-        """NLP solver equality tolerance"""
-        return self.__nlp_solver_tol_eq
-
-    @property
-    def alpha_min(self):
-        """Minimal step size for globalization MERIT_BACKTRACKING, default: 0.05."""
-        return self.__alpha_min
-
-    @property
-    def alpha_reduction(self):
-        """Step size reduction factor for globalization MERIT_BACKTRACKING, default: 0.7."""
-        return self.__alpha_reduction
-
-    @property
-    def line_search_use_sufficient_descent(self):
-        """
-        Determines if sufficient descent (Armijo) condition is used in line search.
-        Type: int; 0 or 1;
-        default: 0.
-        """
-        return self.__line_search_use_sufficient_descent
-
-    @property
-    def eps_sufficient_descent(self):
-        """
-        Factor for sufficient descent (Armijo) conditon, see line_search_use_sufficient_descent.
-        Type: float,
-        default: 1e-4.
-        """
-        return self.__eps_sufficient_descent
-
-    @property
-    def globalization_use_SOC(self):
-        """
-        Determines if second order correction (SOC) is done when using MERIT_BACKTRACKING.
-        SOC is done if preliminary line search does not return full step.
-        Type: int; 0 or 1;
-        default: 0.
-        """
-        return self.__globalization_use_SOC
-
-    @property
-    def full_step_dual(self):
-        """
-        Determines if dual variables are updated with full steps (alpha=1.0) when primal variables are updated with smaller step.
-        Type: int; 0 or 1;
-        default: 0.
-        """
-        return self.__full_step_dual
-
-    @property
-    def nlp_solver_tol_ineq(self):
-        """NLP solver inequality tolerance"""
-        return self.__nlp_solver_tol_ineq
-
-    @property
-    def nlp_solver_tol_comp(self):
-        """NLP solver complementarity tolerance"""
-        return self.__nlp_solver_tol_comp
-
-    @property
-    def nlp_solver_max_iter(self):
-        """
-        NLP solver maximum number of iterations.
-        Type: int > 0
-        Default: 100
-        """
-        return self.__nlp_solver_max_iter
-
-    @property
-    def time_steps(self):
-        """
-        Vector with time steps between the shooting nodes. Set automatically to uniform discretization if :py:attr:`N` and :py:attr:`tf` are provided.
-        Default: :code:`None`
-        """
-        return self.__time_steps
-
-    @property
-    def shooting_nodes(self):
-        """
-        Vector with the shooting nodes, time_steps will be computed from it automatically.
-        Default: :code:`None`
-        """
-        return self.__shooting_nodes
-
-    @property
-    def tf(self):
-        """
-        Prediction horizon
-        Type: float > 0
-        Default: :code:`None`
-        """
-        return self.__tf
-
-    @property
-    def Tsim(self):
-        """
-        Time horizon for one integrator step. Automatically calculated as :py:attr:`tf`/:py:attr:`N`.
-        Default: :code:`None`
-        """
-        return self.__Tsim
-
-    @property
-    def print_level(self):
-        """
-        Verbosity of printing.
-        Type: int >= 0
-        Default: 0
-        """
-        return self.__print_level
-
-    @property
-    def model_external_shared_lib_dir(self):
-        """Path to the .so lib"""
-        return self.__model_external_shared_lib_dir
-
-    @property
-    def model_external_shared_lib_name(self):
-        """Name of the .so lib"""
-        return self.__model_external_shared_lib_name
-
-    @property
-    def exact_hess_constr(self):
-        """
-        Used in case of hessian_approx == 'EXACT'.\n
-        Can be used to turn off exact hessian contributions from the constraints module.
-        """
-        return self.__exact_hess_constr
-
-    @property
-    def exact_hess_cost(self):
-        """
-        Used in case of hessian_approx == 'EXACT'.\n
-        Can be used to turn off exact hessian contributions from the cost module.
-        """
-        return self.__exact_hess_cost
-
-    @property
-    def exact_hess_dyn(self):
-        """
-        Used in case of hessian_approx == 'EXACT'.\n
-        Can be used to turn off exact hessian contributions from the dynamics module.
-        """
-        return self.__exact_hess_dyn
-
-    @property
-    def ext_cost_num_hess(self):
-        """
-        Determines if custom hessian approximation for cost contribution is used (> 0).\n
-        Or if hessian contribution is evaluated exactly using CasADi external function (=0 - default).
-        """
-        return self.__ext_cost_num_hess
-
-    @qp_solver.setter
-    def qp_solver(self, qp_solver):
-        qp_solvers = ('PARTIAL_CONDENSING_HPIPM', \
-                'FULL_CONDENSING_QPOASES', 'FULL_CONDENSING_HPIPM', \
-                'PARTIAL_CONDENSING_QPDUNES', 'PARTIAL_CONDENSING_OSQP')
-        if qp_solver in qp_solvers:
-            self.__qp_solver = qp_solver
-        else:
-            raise Exception('Invalid qp_solver value. Possible values are:\n\n' \
-                    + ',\n'.join(qp_solvers) + '.\n\nYou have: ' + qp_solver + '.\n\nExiting.')
-
-    @regularize_method.setter
-    def regularize_method(self, regularize_method):
-        regularize_methods = ('NO_REGULARIZE', 'MIRROR', 'PROJECT', \
-                                'PROJECT_REDUC_HESS', 'CONVEXIFY')
-        if regularize_method in regularize_methods:
-            self.__regularize_method = regularize_method
-        else:
-            raise Exception('Invalid regularize_method value. Possible values are:\n\n' \
-                    + ',\n'.join(regularize_methods) + '.\n\nYou have: ' + regularize_method + '.\n\nExiting.')
-
-    @collocation_type.setter
-    def collocation_type(self, collocation_type):
-        collocation_types = ('GAUSS_RADAU_IIA', 'GAUSS_LEGENDRE')
-        if collocation_type in collocation_types:
-            self.__collocation_type = collocation_type
-        else:
-            raise Exception('Invalid collocation_type value. Possible values are:\n\n' \
-                    + ',\n'.join(collocation_types) + '.\n\nYou have: ' + collocation_type + '.\n\nExiting.')
-
-    @hessian_approx.setter
-    def hessian_approx(self, hessian_approx):
-        hessian_approxs = ('GAUSS_NEWTON', 'EXACT')
-        if hessian_approx in hessian_approxs:
-            self.__hessian_approx = hessian_approx
-        else:
-            raise Exception('Invalid hessian_approx value. Possible values are:\n\n' \
-                    + ',\n'.join(hessian_approxs) + '.\n\nYou have: ' + hessian_approx + '.\n\nExiting.')
-
-    @integrator_type.setter
-    def integrator_type(self, integrator_type):
-        integrator_types = ('ERK', 'IRK', 'GNSF', 'DISCRETE', 'LIFTED_IRK')
-        if integrator_type in integrator_types:
-            self.__integrator_type = integrator_type
-        else:
-            raise Exception('Invalid integrator_type value. Possible values are:\n\n' \
-                    + ',\n'.join(integrator_types) + '.\n\nYou have: ' + integrator_type + '.\n\nExiting.')
-
-    @tf.setter
-    def tf(self, tf):
-        self.__tf = tf
-
-    @time_steps.setter
-    def time_steps(self, time_steps):
-        if isinstance(time_steps, np.ndarray):
-            if len(time_steps.shape) == 1:
-                    self.__time_steps = time_steps
-            else:
-                raise Exception('Invalid time_steps, expected np.ndarray of shape (N,).')
-        else:
-            raise Exception('Invalid time_steps, expected np.ndarray.')
-
-    @shooting_nodes.setter
-    def shooting_nodes(self, shooting_nodes):
-        if isinstance(shooting_nodes, np.ndarray):
-            if len(shooting_nodes.shape) == 1:
-                self.__shooting_nodes = shooting_nodes
-            else:
-                raise Exception('Invalid shooting_nodes, expected np.ndarray of shape (N+1,).')
-        else:
-            raise Exception('Invalid shooting_nodes, expected np.ndarray.')
-
-    @Tsim.setter
-    def Tsim(self, Tsim):
-        self.__Tsim = Tsim
-
-    @globalization.setter
-    def globalization(self, globalization):
-        globalization_types = ('MERIT_BACKTRACKING', 'FIXED_STEP')
-        if globalization in globalization_types:
-            self.__globalization = globalization
-        else:
-            raise Exception('Invalid globalization value. Possible values are:\n\n' \
-                    + ',\n'.join(globalization_types) + '.\n\nYou have: ' + globalization + '.\n\nExiting.')
-
-    @alpha_min.setter
-    def alpha_min(self, alpha_min):
-        self.__alpha_min = alpha_min
-
-    @alpha_reduction.setter
-    def alpha_reduction(self, alpha_reduction):
-        self.__alpha_reduction = alpha_reduction
-
-    @line_search_use_sufficient_descent.setter
-    def line_search_use_sufficient_descent(self, line_search_use_sufficient_descent):
-        if line_search_use_sufficient_descent in [0, 1]:
-            self.__line_search_use_sufficient_descent = line_search_use_sufficient_descent
-        else:
-            raise Exception(f'Invalid value for line_search_use_sufficient_descent. Possible values are 0, 1, got {line_search_use_sufficient_descent}')
-
-    @globalization_use_SOC.setter
-    def globalization_use_SOC(self, globalization_use_SOC):
-        if globalization_use_SOC in [0, 1]:
-            self.__globalization_use_SOC = globalization_use_SOC
-        else:
-            raise Exception(f'Invalid value for globalization_use_SOC. Possible values are 0, 1, got {globalization_use_SOC}')
-
-    @full_step_dual.setter
-    def full_step_dual(self, full_step_dual):
-        if full_step_dual in [0, 1]:
-            self.__full_step_dual = full_step_dual
-        else:
-            raise Exception(f'Invalid value for full_step_dual. Possible values are 0, 1, got {full_step_dual}')
-
-    @eps_sufficient_descent.setter
-    def eps_sufficient_descent(self, eps_sufficient_descent):
-        if isinstance(eps_sufficient_descent, float) and eps_sufficient_descent > 0:
-            self.__eps_sufficient_descent = eps_sufficient_descent
-        else:
-            raise Exception('Invalid eps_sufficient_descent value. eps_sufficient_descent must be a positive float. Exiting')
-
-    @sim_method_num_stages.setter
-    def sim_method_num_stages(self, sim_method_num_stages):
-
-        # if isinstance(sim_method_num_stages, int):
-        #     self.__sim_method_num_stages = sim_method_num_stages
-        # else:
-        #     raise Exception('Invalid sim_method_num_stages value. sim_method_num_stages must be an integer. Exiting.')
-
-        self.__sim_method_num_stages = sim_method_num_stages
-
-    @sim_method_num_steps.setter
-    def sim_method_num_steps(self, sim_method_num_steps):
-
-        # if isinstance(sim_method_num_steps, int):
-        #     self.__sim_method_num_steps = sim_method_num_steps
-        # else:
-        #     raise Exception('Invalid sim_method_num_steps value. sim_method_num_steps must be an integer. Exiting.')
-        self.__sim_method_num_steps = sim_method_num_steps
-
-
-    @sim_method_newton_iter.setter
-    def sim_method_newton_iter(self, sim_method_newton_iter):
-
-        if isinstance(sim_method_newton_iter, int):
-            self.__sim_method_newton_iter = sim_method_newton_iter
-        else:
-            raise Exception('Invalid sim_method_newton_iter value. sim_method_newton_iter must be an integer. Exiting.')
-
-    @sim_method_jac_reuse.setter
-    def sim_method_jac_reuse(self, sim_method_jac_reuse):
-        # if sim_method_jac_reuse in (True, False):
-        self.__sim_method_jac_reuse = sim_method_jac_reuse
-        # else:
-            # raise Exception('Invalid sim_method_jac_reuse value. sim_method_jac_reuse must be a Boolean.')
-
-    @nlp_solver_type.setter
-    def nlp_solver_type(self, nlp_solver_type):
-        nlp_solver_types = ('SQP', 'SQP_RTI')
-        if nlp_solver_type in nlp_solver_types:
-            self.__nlp_solver_type = nlp_solver_type
-        else:
-            raise Exception('Invalid nlp_solver_type value. Possible values are:\n\n' \
-                    + ',\n'.join(nlp_solver_types) + '.\n\nYou have: ' + nlp_solver_type + '.\n\nExiting.')
-
-    @nlp_solver_step_length.setter
-    def nlp_solver_step_length(self, nlp_solver_step_length):
-        if isinstance(nlp_solver_step_length, float) and nlp_solver_step_length > 0:
-            self.__nlp_solver_step_length = nlp_solver_step_length
-        else:
-            raise Exception('Invalid nlp_solver_step_length value. nlp_solver_step_length must be a positive float. Exiting')
-
-    @levenberg_marquardt.setter
-    def levenberg_marquardt(self, levenberg_marquardt):
-        if isinstance(levenberg_marquardt, float) and levenberg_marquardt >= 0:
-            self.__levenberg_marquardt = levenberg_marquardt
-        else:
-            raise Exception('Invalid levenberg_marquardt value. levenberg_marquardt must be a positive float. Exiting')
-
-    @qp_solver_iter_max.setter
-    def qp_solver_iter_max(self, qp_solver_iter_max):
-        if isinstance(qp_solver_iter_max, int) and qp_solver_iter_max > 0:
-            self.__qp_solver_iter_max = qp_solver_iter_max
-        else:
-            raise Exception('Invalid qp_solver_iter_max value. qp_solver_iter_max must be a positive int. Exiting')
-
-    @qp_solver_cond_N.setter
-    def qp_solver_cond_N(self, qp_solver_cond_N):
-        if isinstance(qp_solver_cond_N, int) and qp_solver_cond_N >= 0:
-            self.__qp_solver_cond_N = qp_solver_cond_N
-        else:
-            raise Exception('Invalid qp_solver_cond_N value. qp_solver_cond_N must be a positive int. Exiting')
-
-    @qp_solver_warm_start.setter
-    def qp_solver_warm_start(self, qp_solver_warm_start):
-        if qp_solver_warm_start in [0, 1, 2]:
-            self.__qp_solver_warm_start = qp_solver_warm_start
-        else:
-            raise Exception('Invalid qp_solver_warm_start value. qp_solver_warm_start must be 0 or 1 or 2. Exiting')
-
-    @qp_tol.setter
-    def qp_tol(self, qp_tol):
-        if isinstance(qp_tol, float) and qp_tol > 0:
-            self.__qp_solver_tol_eq = qp_tol
-            self.__qp_solver_tol_ineq = qp_tol
-            self.__qp_solver_tol_stat = qp_tol
-            self.__qp_solver_tol_comp = qp_tol
-        else:
-            raise Exception('Invalid qp_tol value. qp_tol must be a positive float. Exiting')
-
-    @qp_solver_tol_stat.setter
-    def qp_solver_tol_stat(self, qp_solver_tol_stat):
-        if isinstance(qp_solver_tol_stat, float) and qp_solver_tol_stat > 0:
-            self.__qp_solver_tol_stat = qp_solver_tol_stat
-        else:
-            raise Exception('Invalid qp_solver_tol_stat value. qp_solver_tol_stat must be a positive float. Exiting')
-
-    @qp_solver_tol_eq.setter
-    def qp_solver_tol_eq(self, qp_solver_tol_eq):
-        if isinstance(qp_solver_tol_eq, float) and qp_solver_tol_eq > 0:
-            self.__qp_solver_tol_eq = qp_solver_tol_eq
-        else:
-            raise Exception('Invalid qp_solver_tol_eq value. qp_solver_tol_eq must be a positive float. Exiting')
-
-    @qp_solver_tol_ineq.setter
-    def qp_solver_tol_ineq(self, qp_solver_tol_ineq):
-        if isinstance(qp_solver_tol_ineq, float) and qp_solver_tol_ineq > 0:
-            self.__qp_solver_tol_ineq = qp_solver_tol_ineq
-        else:
-            raise Exception('Invalid qp_solver_tol_ineq value. qp_solver_tol_ineq must be a positive float. Exiting')
-
-    @qp_solver_tol_comp.setter
-    def qp_solver_tol_comp(self, qp_solver_tol_comp):
-        if isinstance(qp_solver_tol_comp, float) and qp_solver_tol_comp > 0:
-            self.__qp_solver_tol_comp = qp_solver_tol_comp
-        else:
-            raise Exception('Invalid qp_solver_tol_comp value. qp_solver_tol_comp must be a positive float. Exiting')
-
-    @tol.setter
-    def tol(self, tol):
-        if isinstance(tol, float) and tol > 0:
-            self.__nlp_solver_tol_eq = tol
-            self.__nlp_solver_tol_ineq = tol
-            self.__nlp_solver_tol_stat = tol
-            self.__nlp_solver_tol_comp = tol
-        else:
-            raise Exception('Invalid tol value. tol must be a positive float. Exiting')
-
-    @nlp_solver_tol_stat.setter
-    def nlp_solver_tol_stat(self, nlp_solver_tol_stat):
-        if isinstance(nlp_solver_tol_stat, float) and nlp_solver_tol_stat > 0:
-            self.__nlp_solver_tol_stat = nlp_solver_tol_stat
-        else:
-            raise Exception('Invalid nlp_solver_tol_stat value. nlp_solver_tol_stat must be a positive float. Exiting')
-
-    @nlp_solver_tol_eq.setter
-    def nlp_solver_tol_eq(self, nlp_solver_tol_eq):
-        if isinstance(nlp_solver_tol_eq, float) and nlp_solver_tol_eq > 0:
-            self.__nlp_solver_tol_eq = nlp_solver_tol_eq
-        else:
-            raise Exception('Invalid nlp_solver_tol_eq value. nlp_solver_tol_eq must be a positive float. Exiting')
-
-    @nlp_solver_tol_ineq.setter
-    def nlp_solver_tol_ineq(self, nlp_solver_tol_ineq):
-        if isinstance(nlp_solver_tol_ineq, float) and nlp_solver_tol_ineq > 0:
-            self.__nlp_solver_tol_ineq = nlp_solver_tol_ineq
-        else:
-            raise Exception('Invalid nlp_solver_tol_ineq value. nlp_solver_tol_ineq must be a positive float. Exiting')
-
-    @nlp_solver_tol_comp.setter
-    def nlp_solver_tol_comp(self, nlp_solver_tol_comp):
-        if isinstance(nlp_solver_tol_comp, float) and nlp_solver_tol_comp > 0:
-            self.__nlp_solver_tol_comp = nlp_solver_tol_comp
-        else:
-            raise Exception('Invalid nlp_solver_tol_comp value. nlp_solver_tol_comp must be a positive float. Exiting')
-
-    @nlp_solver_max_iter.setter
-    def nlp_solver_max_iter(self, nlp_solver_max_iter):
-
-        if isinstance(nlp_solver_max_iter, int) and nlp_solver_max_iter > 0:
-            self.__nlp_solver_max_iter = nlp_solver_max_iter
-        else:
-            raise Exception('Invalid nlp_solver_max_iter value. nlp_solver_max_iter must be a positive int. Exiting')
-
-    @print_level.setter
-    def print_level(self, print_level):
-        if isinstance(print_level, int) and print_level >= 0:
-            self.__print_level = print_level
-        else:
-            raise Exception('Invalid print_level value. print_level takes one of the values >=0. Exiting')
-
-    @model_external_shared_lib_dir.setter
-    def model_external_shared_lib_dir(self, model_external_shared_lib_dir):
-        if isinstance(model_external_shared_lib_dir, str) :
-            self.__model_external_shared_lib_dir = model_external_shared_lib_dir
-        else:
-            raise Exception('Invalid model_external_shared_lib_dir value. Str expected.' \
-            + '.\n\nYou have: ' + type(model_external_shared_lib_dir) + '.\n\nExiting.')
-
-    @model_external_shared_lib_name.setter
-    def model_external_shared_lib_name(self, model_external_shared_lib_name):
-        if isinstance(model_external_shared_lib_name, str) :
-            if model_external_shared_lib_name[-3:] == '.so' : 
-                raise Exception('Invalid model_external_shared_lib_name value. Remove the .so extension.' \
-            + '.\n\nYou have: ' + type(model_external_shared_lib_name) + '.\n\nExiting.')
-            else :
-                self.__model_external_shared_lib_name = model_external_shared_lib_name
-        else:
-            raise Exception('Invalid model_external_shared_lib_name value. Str expected.' \
-            + '.\n\nYou have: ' + type(model_external_shared_lib_name) + '.\n\nExiting.')
-
-    @exact_hess_constr.setter
-    def exact_hess_constr(self, exact_hess_constr):
-        if exact_hess_constr in [0, 1]:
-            self.__exact_hess_constr = exact_hess_constr
-        else:
-            raise Exception('Invalid exact_hess_constr value. exact_hess_constr takes one of the values 0, 1. Exiting')
-
-    @exact_hess_cost.setter
-    def exact_hess_cost(self, exact_hess_cost):
-        if exact_hess_cost in [0, 1]:
-            self.__exact_hess_cost = exact_hess_cost
-        else:
-            raise Exception('Invalid exact_hess_cost value. exact_hess_cost takes one of the values 0, 1. Exiting')
-
-    @exact_hess_dyn.setter
-    def exact_hess_dyn(self, exact_hess_dyn):
-        if exact_hess_dyn in [0, 1]:
-            self.__exact_hess_dyn = exact_hess_dyn
-        else:
-            raise Exception('Invalid exact_hess_dyn value. exact_hess_dyn takes one of the values 0, 1. Exiting')
-
-    @ext_cost_num_hess.setter
-    def ext_cost_num_hess(self, ext_cost_num_hess):
-        if ext_cost_num_hess in [0, 1]:
-            self.__ext_cost_num_hess = ext_cost_num_hess
-        else:
-            raise Exception('Invalid ext_cost_num_hess value. ext_cost_num_hess takes one of the values 0, 1. Exiting')
-
-    def set(self, attr, value):
-        setattr(self, attr, value)
-
+from .acados_ocp_cost import AcadosOcpCost
+from .acados_ocp_constraints import AcadosOcpConstraints
+from .acados_dims import AcadosOcpDims
+from .acados_ocp_options import AcadosOcpOptions
+
+from .utils import (get_acados_path, format_class_dict, make_object_json_dumpable, render_template,
+                    get_shared_lib_ext, is_column, is_empty, casadi_length, check_if_square,
+                    check_casadi_version)
+from .penalty_utils import symmetric_huber_penalty, one_sided_huber_penalty
+
+from .zoro_description import ZoroDescription, process_zoro_description
+from .casadi_function_generation import (
+    GenerateContext,
+    generate_c_code_conl_cost, generate_c_code_nls_cost, generate_c_code_external_cost,
+    generate_c_code_explicit_ode, generate_c_code_implicit_ode, generate_c_code_discrete_dynamics, generate_c_code_gnsf,
+    generate_c_code_constraint
+)
 
 class AcadosOcp:
     """
@@ -2861,15 +65,17 @@ class AcadosOcp:
 
     The class has the following properties that can be modified to formulate a specific OCP, see below:
 
-        - :py:attr:`dims` of type :py:class:`acados_template.acados_ocp.AcadosOcpDims`
+        - :py:attr:`dims` of type :py:class:`acados_template.acados_dims.AcadosOcpDims`
         - :py:attr:`model` of type :py:class:`acados_template.acados_model.AcadosModel`
-        - :py:attr:`cost` of type :py:class:`acados_template.acados_ocp.AcadosOcpCost`
-        - :py:attr:`constraints` of type :py:class:`acados_template.acados_ocp.AcadosOcpConstraints`
-        - :py:attr:`solver_options` of type :py:class:`acados_template.acados_ocp.AcadosOcpOptions`
+        - :py:attr:`cost` of type :py:class:`acados_template.acados_ocp_cost.AcadosOcpCost`
+        - :py:attr:`constraints` of type :py:class:`acados_template.acados_ocp_constraints.AcadosOcpConstraints`
+        - :py:attr:`solver_options` of type :py:class:`acados_template.acados_ocp_options.AcadosOcpOptions`
 
         - :py:attr:`acados_include_path` (set automatically)
+        - :py:attr:`shared_lib_ext` (set automatically)
         - :py:attr:`acados_lib_path` (set automatically)
         - :py:attr:`parameter_values` - used to initialize the parameters (can be changed)
+        - :py:attr:`p_global_values` - used to initialize the global parameters (can be changed)
     """
     def __init__(self, acados_path=''):
         """
@@ -2880,33 +86,44 @@ class AcadosOcp:
             acados_path = get_acados_path()
 
         self.dims = AcadosOcpDims()
-        """Dimension definitions, type :py:class:`acados_template.acados_ocp.AcadosOcpDims`"""
+        """Dimension definitions, type :py:class:`acados_template.acados_dims.AcadosOcpDims`"""
         self.model = AcadosModel()
         """Model definitions, type :py:class:`acados_template.acados_model.AcadosModel`"""
         self.cost = AcadosOcpCost()
-        """Cost definitions, type :py:class:`acados_template.acados_ocp.AcadosOcpCost`"""
+        """Cost definitions, type :py:class:`acados_template.acados_ocp_cost.AcadosOcpCost`"""
         self.constraints = AcadosOcpConstraints()
-        """Constraints definitions, type :py:class:`acados_template.acados_ocp.AcadosOcpConstraints`"""
+        """Constraints definitions, type :py:class:`acados_template.acados_ocp_constraints.AcadosOcpConstraints`"""
         self.solver_options = AcadosOcpOptions()
-        """Solver Options, type :py:class:`acados_template.acados_ocp.AcadosOcpOptions`"""
-		
+        """Solver Options, type :py:class:`acados_template.acados_ocp_options.AcadosOcpOptions`"""
+
+        self.zoro_description = None
+        """zoRO - zero order robust optimization - description: for advanced users."""
+
         self.acados_include_path = os.path.join(acados_path, 'include').replace(os.sep, '/') # the replace part is important on Windows for CMake
         """Path to acados include directory (set automatically), type: `string`"""
         self.acados_lib_path = os.path.join(acados_path, 'lib').replace(os.sep, '/') # the replace part is important on Windows for CMake
         """Path to where acados library is located, type: `string`"""
+        self.shared_lib_ext = get_shared_lib_ext()
 
-        import numpy
-        self.cython_include_dirs = numpy.get_include()
+        # get cython paths
+        from sysconfig import get_paths
+        self.cython_include_dirs = [np.get_include(), get_paths()['include']]
 
         self.__parameter_values = np.array([])
+        self.__p_global_values = np.array([])
         self.__problem_class = 'OCP'
+        self.__json_file = "acados_ocp.json"
 
         self.code_export_directory = 'c_generated_code'
         """Path to where code will be exported. Default: `c_generated_code`."""
 
+        self.simulink_opts = None
+        """Options to configure Simulink S-function blocks, mainly to activate possible Inputs and Outputs."""
+
+
     @property
     def parameter_values(self):
-        """:math:`p` - initial values for parameter - can be updated stagewise"""
+        """:math:`p` - initial values for parameter vector - can be updated stagewise"""
         return self.__parameter_values
 
     @parameter_values.setter
@@ -2917,14 +134,1465 @@ class AcadosOcp:
             raise Exception('Invalid parameter_values value. ' +
                             f'Expected numpy array, got {type(parameter_values)}.')
 
-    def set(self, attr, value):
-        # tokenize string
-        tokens = attr.split('_', 1)
-        if len(tokens) > 1:
-            setter_to_call = getattr(getattr(self, tokens[0]), 'set')
+    @property
+    def p_global_values(self):
+        r"""initial values for :math:`p_\text{global}` vector, see `AcadosModel.p_global` - can be updated.
+        Type: `numpy.ndarray` of shape `(np_global, )`.
+        """
+        return self.__p_global_values
+
+    @p_global_values.setter
+    def p_global_values(self, p_global_values):
+        if isinstance(p_global_values, np.ndarray):
+            self.__p_global_values = p_global_values
         else:
-            setter_to_call = getattr(self, 'set')
+            raise Exception('Invalid p_global_values value. ' +
+                            f'Expected numpy array, got {type(p_global_values)}.')
 
-        setter_to_call(tokens[1], value)
+    @property
+    def json_file(self):
+        """Name of the json file where the problem description is stored."""
+        return self.__json_file
 
+    @json_file.setter
+    def json_file(self, json_file):
+        self.__json_file = json_file
+
+    def make_consistent(self, is_mocp_phase=False) -> None:
+        """
+        Detect dimensions, perform sanity checks
+        """
+        dims = self.dims
+        cost = self.cost
+        constraints = self.constraints
+        model = self.model
+        opts = self.solver_options
+
+        model.make_consistent(dims)
+        self.name = model.name
+
+        # check if nx != nx_next
+        if not is_mocp_phase and dims.nx != dims.nx_next and opts.N_horizon > 1:
+            raise Exception('nx_next should be equal to nx if more than one shooting interval is used.')
+
+        # parameters
+        if self.parameter_values.shape[0] != dims.np:
+            raise Exception('inconsistent dimension np, regarding model.p and parameter_values.' + \
+                f'\nGot np = {dims.np}, self.parameter_values.shape = {self.parameter_values.shape[0]}\n')
+
+        # p_global_values
+        if self.p_global_values.shape[0] != dims.np_global:
+            raise Exception('inconsistent dimension np_global, regarding model.p_global and p_global_values.' + \
+                f'\nGot np_global = {dims.np_global}, self.p_global_values.shape = {self.p_global_values.shape[0]}\n')
+
+        ## cost
+        # initial stage - if not set, copy fields from path constraints
+        if cost.cost_type_0 is None:
+            self.copy_path_cost_to_stage_0()
+
+        if cost.cost_type_0 == 'LINEAR_LS':
+            check_if_square(cost.W_0, 'W_0')
+            ny_0 = cost.W_0.shape[0]
+            if cost.Vx_0.shape[0] != ny_0 or cost.Vu_0.shape[0] != ny_0:
+                raise Exception('inconsistent dimension ny_0, regarding W_0, Vx_0, Vu_0.' + \
+                                f'\nGot W_0[{cost.W_0.shape}], Vx_0[{cost.Vx_0.shape}], Vu_0[{cost.Vu_0.shape}]\n')
+            if dims.nz != 0 and cost.Vz_0.shape[0] != ny_0:
+                raise Exception('inconsistent dimension ny_0, regarding W_0, Vx_0, Vu_0, Vz_0.' + \
+                                f'\nGot W_0[{cost.W_0.shape}], Vx_0[{cost.Vx_0.shape}], Vu_0[{cost.Vu_0.shape}], Vz_0[{cost.Vz_0.shape}]\n')
+            if cost.Vx_0.shape[1] != dims.nx and ny_0 != 0:
+                raise Exception('inconsistent dimension: Vx_0 should have nx columns.')
+            if cost.Vu_0.shape[1] != dims.nu and ny_0 != 0:
+                raise Exception('inconsistent dimension: Vu_0 should have nu columns.')
+            if cost.yref_0.shape[0] != ny_0:
+                raise Exception('inconsistent dimension: regarding W_0, yref_0.' + \
+                                f'\nGot W_0[{cost.W_0.shape}], yref_0[{cost.yref_0.shape}]\n')
+            dims.ny_0 = ny_0
+
+        elif cost.cost_type_0 == 'NONLINEAR_LS':
+            ny_0 = cost.W_0.shape[0]
+            check_if_square(cost.W_0, 'W_0')
+            if (is_empty(model.cost_y_expr_0) and ny_0 != 0) or casadi_length(model.cost_y_expr_0) != ny_0 or cost.yref_0.shape[0] != ny_0:
+                raise Exception('inconsistent dimension ny_0: regarding W_0, cost_y_expr.' +
+                                f'\nGot W_0[{cost.W_0.shape}], yref_0[{cost.yref_0.shape}], ',
+                                f'cost_y_expr_0 [{casadi_length(model.cost_y_expr_0)}]\n')
+            dims.ny_0 = ny_0
+
+        elif cost.cost_type_0 == 'CONVEX_OVER_NONLINEAR':
+            if is_empty(model.cost_y_expr_0):
+                raise Exception('cost_y_expr_0 and/or cost_y_expr not provided.')
+            ny_0 = casadi_length(model.cost_y_expr_0)
+            if is_empty(model.cost_r_in_psi_expr_0) or casadi_length(model.cost_r_in_psi_expr_0) != ny_0:
+                raise Exception('inconsistent dimension ny_0: regarding cost_y_expr_0 and cost_r_in_psi_0.')
+            if is_empty(model.cost_psi_expr_0) or casadi_length(model.cost_psi_expr_0) != 1:
+                raise Exception('cost_psi_expr_0 not provided or not scalar-valued.')
+            if cost.yref_0.shape[0] != ny_0:
+                raise Exception('inconsistent dimension: regarding yref_0 and cost_y_expr_0, cost_r_in_psi_0.')
+            dims.ny_0 = ny_0
+
+            if not (opts.hessian_approx=='EXACT' and opts.exact_hess_cost==False) and opts.hessian_approx != 'GAUSS_NEWTON':
+                raise Exception("\nWith CONVEX_OVER_NONLINEAR cost type, possible Hessian approximations are:\n"
+                "GAUSS_NEWTON or EXACT with 'exact_hess_cost' == False.\n")
+
+        elif cost.cost_type_0 == 'EXTERNAL':
+            if opts.hessian_approx == 'GAUSS_NEWTON' and opts.ext_cost_num_hess == 0 and model.cost_expr_ext_cost_custom_hess_0 is None:
+                print("\nWARNING: Gauss-Newton Hessian approximation with EXTERNAL cost type not possible!\n"
+                "got cost_type_0: EXTERNAL, hessian_approx: 'GAUSS_NEWTON.'\n"
+                "GAUSS_NEWTON hessian is not defined for EXTERNAL cost formulation.\n"
+                "If you continue, acados will proceed computing the exact hessian for the cost term.\n"
+                "Note: There is also the option to use the external cost module with a numerical hessian approximation (see `ext_cost_num_hess`).\n"
+                "OR the option to provide a symbolic custom hessian approximation (see `cost_expr_ext_cost_custom_hess`).\n")
+
+        # path
+        if cost.cost_type == 'LINEAR_LS':
+            ny = cost.W.shape[0]
+            check_if_square(cost.W, 'W')
+            if cost.Vx.shape[0] != ny or cost.Vu.shape[0] != ny:
+                raise Exception('inconsistent dimension ny, regarding W, Vx, Vu.' + \
+                                f'\nGot W[{cost.W.shape}], Vx[{cost.Vx.shape}], Vu[{cost.Vu.shape}]\n')
+            if dims.nz != 0 and cost.Vz.shape[0] != ny:
+                raise Exception('inconsistent dimension ny, regarding W, Vx, Vu, Vz.' + \
+                                f'\nGot W[{cost.W.shape}], Vx[{cost.Vx.shape}], Vu[{cost.Vu.shape}], Vz[{cost.Vz.shape}]\n')
+            if cost.Vx.shape[1] != dims.nx and ny != 0:
+                raise Exception('inconsistent dimension: Vx should have nx columns.')
+            if cost.Vu.shape[1] != dims.nu and ny != 0:
+                raise Exception('inconsistent dimension: Vu should have nu columns.')
+            if cost.yref.shape[0] != ny:
+                raise Exception('inconsistent dimension: regarding W, yref.' + \
+                                f'\nGot W[{cost.W.shape}], yref[{cost.yref.shape}]\n')
+            dims.ny = ny
+
+        elif cost.cost_type == 'NONLINEAR_LS':
+            ny = cost.W.shape[0]
+            check_if_square(cost.W, 'W')
+            if (is_empty(model.cost_y_expr) and ny != 0) or casadi_length(model.cost_y_expr) != ny or cost.yref.shape[0] != ny:
+                raise Exception('inconsistent dimension: regarding W, yref.' + \
+                                f'\nGot W[{cost.W.shape}], yref[{cost.yref.shape}],',
+                                f'cost_y_expr[{casadi_length(model.cost_y_expr)}]\n')
+            dims.ny = ny
+
+        elif cost.cost_type == 'CONVEX_OVER_NONLINEAR':
+            if is_empty(model.cost_y_expr):
+                raise Exception('cost_y_expr and/or cost_y_expr not provided.')
+            ny = casadi_length(model.cost_y_expr)
+            if is_empty(model.cost_r_in_psi_expr) or casadi_length(model.cost_r_in_psi_expr) != ny:
+                raise Exception('inconsistent dimension ny: regarding cost_y_expr and cost_r_in_psi.')
+            if is_empty(model.cost_psi_expr) or casadi_length(model.cost_psi_expr) != 1:
+                raise Exception('cost_psi_expr not provided or not scalar-valued.')
+            if cost.yref.shape[0] != ny:
+                raise Exception('inconsistent dimension: regarding yref and cost_y_expr, cost_r_in_psi.')
+            dims.ny = ny
+
+            if not (opts.hessian_approx=='EXACT' and opts.exact_hess_cost==False) and opts.hessian_approx != 'GAUSS_NEWTON':
+                raise Exception("\nWith CONVEX_OVER_NONLINEAR cost type, possible Hessian approximations are:\n"
+                "GAUSS_NEWTON or EXACT with 'exact_hess_cost' == False.\n")
+
+        elif cost.cost_type == 'EXTERNAL':
+            if opts.hessian_approx == 'GAUSS_NEWTON' and opts.ext_cost_num_hess == 0 and model.cost_expr_ext_cost_custom_hess is None:
+                print("\nWARNING: Gauss-Newton Hessian approximation with EXTERNAL cost type not possible!\n"
+                "got cost_type: EXTERNAL, hessian_approx: 'GAUSS_NEWTON.'\n"
+                "GAUSS_NEWTON hessian is only supported for cost_types [NON]LINEAR_LS.\n"
+                "If you continue, acados will proceed computing the exact hessian for the cost term.\n"
+                "Note: There is also the option to use the external cost module with a numerical hessian approximation (see `ext_cost_num_hess`).\n"
+                "OR the option to provide a symbolic custom hessian approximation (see `cost_expr_ext_cost_custom_hess`).\n")
+
+        # terminal
+        if cost.cost_type_e == 'LINEAR_LS':
+            ny_e = cost.W_e.shape[0]
+            check_if_square(cost.W_e, 'W_e')
+            if cost.Vx_e.shape[0] != ny_e:
+                raise Exception('inconsistent dimension ny_e: regarding W_e, cost_y_expr_e.' + \
+                    f'\nGot W_e[{cost.W_e.shape}], Vx_e[{cost.Vx_e.shape}]')
+            if cost.Vx_e.shape[1] != dims.nx and ny_e != 0:
+                raise Exception('inconsistent dimension: Vx_e should have nx columns.')
+            if cost.yref_e.shape[0] != ny_e:
+                raise Exception('inconsistent dimension: regarding W_e, yref_e.')
+            dims.ny_e = ny_e
+
+        elif cost.cost_type_e == 'NONLINEAR_LS':
+            ny_e = cost.W_e.shape[0]
+            check_if_square(cost.W_e, 'W_e')
+            if (is_empty(model.cost_y_expr_e) and ny_e != 0) or casadi_length(model.cost_y_expr_e) != ny_e or cost.yref_e.shape[0] != ny_e:
+                raise Exception('inconsistent dimension ny_e: regarding W_e, cost_y_expr.' +
+                                f'\nGot W_e[{cost.W_e.shape}], yref_e[{cost.yref_e.shape}], ',
+                                f'cost_y_expr_e [{casadi_length(model.cost_y_expr_e)}]\n')
+            dims.ny_e = ny_e
+
+        elif cost.cost_type_e == 'CONVEX_OVER_NONLINEAR':
+            if is_empty(model.cost_y_expr_e):
+                raise Exception('cost_y_expr_e not provided.')
+            ny_e = casadi_length(model.cost_y_expr_e)
+            if is_empty(model.cost_r_in_psi_expr_e) or casadi_length(model.cost_r_in_psi_expr_e) != ny_e:
+                raise Exception('inconsistent dimension ny_e: regarding cost_y_expr_e and cost_r_in_psi_e.')
+            if is_empty(model.cost_psi_expr_e) or casadi_length(model.cost_psi_expr_e) != 1:
+                raise Exception('cost_psi_expr_e not provided or not scalar-valued.')
+            if cost.yref_e.shape[0] != ny_e:
+                raise Exception('inconsistent dimension: regarding yref_e and cost_y_expr_e, cost_r_in_psi_e.')
+            dims.ny_e = ny_e
+
+            if not (opts.hessian_approx=='EXACT' and opts.exact_hess_cost==False) and opts.hessian_approx != 'GAUSS_NEWTON':
+                raise Exception("\nWith CONVEX_OVER_NONLINEAR cost type, possible Hessian approximations are:\n"
+                "GAUSS_NEWTON or EXACT with 'exact_hess_cost' == False.\n")
+
+        elif cost.cost_type_e == 'EXTERNAL':
+            if opts.hessian_approx == 'GAUSS_NEWTON' and opts.ext_cost_num_hess == 0 and model.cost_expr_ext_cost_custom_hess_e is None:
+                print("\nWARNING: Gauss-Newton Hessian approximation with EXTERNAL cost type not possible!\n"
+                "got cost_type_e: EXTERNAL, hessian_approx: 'GAUSS_NEWTON.'\n"
+                "GAUSS_NEWTON hessian is only supported for cost_types [NON]LINEAR_LS.\n"
+                "If you continue, acados will proceed computing the exact hessian for the cost term.\n"
+                "Note: There is also the option to use the external cost module with a numerical hessian approximation (see `ext_cost_num_hess`).\n"
+                "OR the option to provide a symbolic custom hessian approximation (see `cost_expr_ext_cost_custom_hess`).\n")
+
+        # cost integration
+        supports_cost_integration = lambda type : type in ['NONLINEAR_LS', 'CONVEX_OVER_NONLINEAR']
+        if opts.cost_discretization == 'INTEGRATOR' and \
+            any([not supports_cost_integration(cost) for cost in [cost.cost_type_0, cost.cost_type]]):
+            raise Exception('cost_discretization == INTEGRATOR only works with cost in ["NONLINEAR_LS", "CONVEX_OVER_NONLINEAR"] costs.')
+
+        ## constraints
+        # initial
+        this_shape = constraints.lbx_0.shape
+        other_shape = constraints.ubx_0.shape
+        if not this_shape == other_shape:
+            raise Exception('lbx_0, ubx_0 have different shapes!')
+        if not is_column(constraints.lbx_0):
+            raise Exception('lbx_0, ubx_0 must be column vectors!')
+        dims.nbx_0 = constraints.lbx_0.size
+
+        if constraints.has_x0 and dims.nbx_0 != dims.nx:
+            raise Exception(f"x0 should have shape nx = {dims.nx}.")
+
+        if constraints.has_x0:
+            # case: x0 was set: nbx0 are all equalities.
+            dims.nbxe_0 = dims.nbx_0
+        elif constraints.idxbxe_0 is not None:
+            dims.nbxe_0 = constraints.idxbxe_0.shape[0]
+            if any(constraints.idxbxe_0 > dims.nbx_0):
+                raise Exception(f'idxbxe_0 = {constraints.idxbxe_0} contains value > nbx_0 = {dims.nbx_0}.')
+        elif dims.nbxe_0 is None:
+            # case: x0 and idxbxe_0 were not set -> dont assume nbx0 to be equality constraints.
+            dims.nbxe_0 = 0
+
+        if not is_empty(model.con_h_expr_0):
+            nh_0 = casadi_length(model.con_h_expr_0)
+        else:
+            nh_0 = 0
+
+        if constraints.uh_0.shape[0] != nh_0 or constraints.lh_0.shape[0] != nh_0:
+            raise Exception('inconsistent dimension nh_0, regarding lh_0, uh_0, con_h_expr_0.')
+        else:
+            dims.nh_0 = nh_0
+
+        if is_empty(model.con_phi_expr_0):
+            dims.nphi_0 = 0
+            dims.nr_0 = 0
+        else:
+            dims.nphi_0 = casadi_length(model.con_phi_expr_0)
+            constraints.constr_type_0 = "BGP"
+            if is_empty(model.con_r_expr_0):
+                raise Exception('convex over nonlinear constraints: con_r_expr_0 but con_phi_expr_0 is nonempty')
+            else:
+                dims.nr_0 = casadi_length(model.con_r_expr_0)
+
+        # path
+        nbx = constraints.idxbx.shape[0]
+        if constraints.ubx.shape[0] != nbx or constraints.lbx.shape[0] != nbx:
+            raise Exception('inconsistent dimension nbx, regarding idxbx, ubx, lbx.')
+        else:
+            dims.nbx = nbx
+        if any(constraints.idxbx > dims.nx):
+            raise Exception(f'idxbx = {constraints.idxbx} contains value > nx = {dims.nx}.')
+
+        nbu = constraints.idxbu.shape[0]
+        if constraints.ubu.shape[0] != nbu or constraints.lbu.shape[0] != nbu:
+            raise Exception('inconsistent dimension nbu, regarding idxbu, ubu, lbu.')
+        else:
+            dims.nbu = nbu
+        if any(constraints.idxbu > dims.nu):
+            raise Exception(f'idxbu = {constraints.idxbu} contains value > nu = {dims.nu}.')
+
+        # lg <= C * x + D * u <= ug
+        ng = constraints.lg.shape[0]
+        if constraints.ug.shape[0] != ng or constraints.C.shape[0] != ng \
+        or constraints.D.shape[0] != ng:
+            raise Exception('inconsistent dimension ng, regarding lg, ug, C, D.')
+        else:
+            dims.ng = ng
+
+        if ng > 0:
+            if constraints.C.shape[1] != dims.nx:
+                raise Exception(f'inconsistent dimension nx, regarding C, got C.shape[1] = {constraints.C.shape[1]}.')
+            if constraints.D.shape[1] != dims.nu:
+                raise Exception(f'inconsistent dimension nu, regarding D, got D.shape[1] = {constraints.D.shape[1]}.')
+
+        if not is_empty(model.con_h_expr):
+            nh = casadi_length(model.con_h_expr)
+        else:
+            nh = 0
+
+        if constraints.uh.shape[0] != nh or constraints.lh.shape[0] != nh:
+            raise Exception('inconsistent dimension nh, regarding lh, uh, con_h_expr.')
+        else:
+            dims.nh = nh
+
+        if is_empty(model.con_phi_expr):
+            dims.nphi = 0
+            dims.nr = 0
+        else:
+            dims.nphi = casadi_length(model.con_phi_expr)
+            constraints.constr_type = "BGP"
+            if is_empty(model.con_r_expr):
+                raise Exception('convex over nonlinear constraints: con_r_expr but con_phi_expr is nonempty')
+            else:
+                dims.nr = casadi_length(model.con_r_expr)
+
+
+        # terminal
+        nbx_e = constraints.idxbx_e.shape[0]
+        if constraints.ubx_e.shape[0] != nbx_e or constraints.lbx_e.shape[0] != nbx_e:
+            raise Exception('inconsistent dimension nbx_e, regarding idxbx_e, ubx_e, lbx_e.')
+        else:
+            dims.nbx_e = nbx_e
+        if any(constraints.idxbx_e > dims.nx):
+            raise Exception(f'idxbx_e = {constraints.idxbx_e} contains value > nx = {dims.nx}.')
+
+        ng_e = constraints.lg_e.shape[0]
+        if constraints.ug_e.shape[0] != ng_e or constraints.C_e.shape[0] != ng_e:
+            raise Exception('inconsistent dimension ng_e, regarding_e lg_e, ug_e, C_e.')
+        else:
+            dims.ng_e = ng_e
+
+        if not is_empty(model.con_h_expr_e):
+            nh_e = casadi_length(model.con_h_expr_e)
+        else:
+            nh_e = 0
+
+        if constraints.uh_e.shape[0] != nh_e or constraints.lh_e.shape[0] != nh_e:
+            raise Exception('inconsistent dimension nh_e, regarding lh_e, uh_e, con_h_expr_e.')
+        else:
+            dims.nh_e = nh_e
+
+        if is_empty(model.con_phi_expr_e):
+            dims.nphi_e = 0
+            dims.nr_e = 0
+        else:
+            dims.nphi_e = casadi_length(model.con_phi_expr_e)
+            constraints.constr_type_e = "BGP"
+            if is_empty(model.con_r_expr_e):
+                raise Exception('convex over nonlinear constraints: con_r_expr_e but con_phi_expr_e is nonempty')
+            else:
+                dims.nr_e = casadi_length(model.con_r_expr_e)
+
+        # Slack dimensions
+        nsbx = constraints.idxsbx.shape[0]
+        if nsbx > nbx:
+            raise Exception(f'inconsistent dimension nsbx = {nsbx}. Is greater than nbx = {nbx}.')
+        if any(constraints.idxsbx > nbx):
+            raise Exception(f'idxsbx = {constraints.idxsbx} contains value > nbx = {nbx}.')
+        if is_empty(constraints.lsbx):
+            constraints.lsbx = np.zeros((nsbx,))
+        elif constraints.lsbx.shape[0] != nsbx:
+            raise Exception('inconsistent dimension nsbx, regarding idxsbx, lsbx.')
+        if is_empty(constraints.usbx):
+            constraints.usbx = np.zeros((nsbx,))
+        elif constraints.usbx.shape[0] != nsbx:
+            raise Exception('inconsistent dimension nsbx, regarding idxsbx, usbx.')
+        dims.nsbx = nsbx
+
+        nsbu = constraints.idxsbu.shape[0]
+        if nsbu > nbu:
+            raise Exception(f'inconsistent dimension nsbu = {nsbu}. Is greater than nbu = {nbu}.')
+        if any(constraints.idxsbu > nbu):
+            raise Exception(f'idxsbu = {constraints.idxsbu} contains value > nbu = {nbu}.')
+        if is_empty(constraints.lsbu):
+            constraints.lsbu = np.zeros((nsbu,))
+        elif constraints.lsbu.shape[0] != nsbu:
+            raise Exception('inconsistent dimension nsbu, regarding idxsbu, lsbu.')
+        if is_empty(constraints.usbu):
+            constraints.usbu = np.zeros((nsbu,))
+        elif constraints.usbu.shape[0] != nsbu:
+            raise Exception('inconsistent dimension nsbu, regarding idxsbu, usbu.')
+        dims.nsbu = nsbu
+
+        nsh = constraints.idxsh.shape[0]
+        if nsh > nh:
+            raise Exception(f'inconsistent dimension nsh = {nsh}. Is greater than nh = {nh}.')
+        if any(constraints.idxsh > nh):
+            raise Exception(f'idxsh = {constraints.idxsh} contains value > nh = {nh}.')
+        if is_empty(constraints.lsh):
+            constraints.lsh = np.zeros((nsh,))
+        elif constraints.lsh.shape[0] != nsh:
+            raise Exception('inconsistent dimension nsh, regarding idxsh, lsh.')
+        if is_empty(constraints.ush):
+            constraints.ush = np.zeros((nsh,))
+        elif constraints.ush.shape[0] != nsh:
+            raise Exception('inconsistent dimension nsh, regarding idxsh, ush.')
+        dims.nsh = nsh
+
+        nsphi = constraints.idxsphi.shape[0]
+        if nsphi > dims.nphi:
+            raise Exception(f'inconsistent dimension nsphi = {nsphi}. Is greater than nphi = {dims.nphi}.')
+        if any(constraints.idxsphi > dims.nphi):
+            raise Exception(f'idxsphi = {constraints.idxsphi} contains value > nphi = {dims.nphi}.')
+        if is_empty(constraints.lsphi):
+            constraints.lsphi = np.zeros((nsphi,))
+        elif constraints.lsphi.shape[0] != nsphi:
+            raise Exception('inconsistent dimension nsphi, regarding idxsphi, lsphi.')
+        if is_empty(constraints.usphi):
+            constraints.usphi = np.zeros((nsphi,))
+        elif constraints.usphi.shape[0] != nsphi:
+            raise Exception('inconsistent dimension nsphi, regarding idxsphi, usphi.')
+        dims.nsphi = nsphi
+
+        nsg = constraints.idxsg.shape[0]
+        if nsg > ng:
+            raise Exception(f'inconsistent dimension nsg = {nsg}. Is greater than ng = {ng}.')
+        if any(constraints.idxsg > ng):
+            raise Exception(f'idxsg = {constraints.idxsg} contains value > ng = {ng}.')
+        if is_empty(constraints.lsg):
+            constraints.lsg = np.zeros((nsg,))
+        elif constraints.lsg.shape[0] != nsg:
+            raise Exception('inconsistent dimension nsg, regarding idxsg, lsg.')
+        if is_empty(constraints.usg):
+            constraints.usg = np.zeros((nsg,))
+        elif constraints.usg.shape[0] != nsg:
+            raise Exception('inconsistent dimension nsg, regarding idxsg, usg.')
+        dims.nsg = nsg
+
+        ns = nsbx + nsbu + nsh + nsg + nsphi
+        wrong_fields = []
+        if cost.Zl.shape[0] != ns:
+            wrong_fields += ["Zl"]
+            dim = cost.Zl.shape[0]
+        elif cost.Zu.shape[0] != ns:
+            wrong_fields += ["Zu"]
+            dim = cost.Zu.shape[0]
+        elif cost.zl.shape[0] != ns:
+            wrong_fields += ["zl"]
+            dim = cost.zl.shape[0]
+        elif cost.zu.shape[0] != ns:
+            wrong_fields += ["zu"]
+            dim = cost.zu.shape[0]
+
+        if wrong_fields != []:
+            raise Exception(f'Inconsistent size for fields {", ".join(wrong_fields)}, with dimension {dim}, \n\t'\
+                + f'Detected ns = {ns} = nsbx + nsbu + nsg + nsh + nsphi.\n\t'\
+                + f'With nsbx = {nsbx}, nsbu = {nsbu}, nsg = {nsg}, nsh = {nsh}, nsphi = {nsphi}.')
+        dims.ns = ns
+
+        # slack dimensions at initial node
+        nsh_0 = constraints.idxsh_0.shape[0]
+        if nsh_0 > nh_0:
+            raise Exception(f'inconsistent dimension nsh_0 = {nsh_0}. Is greater than nh_0 = {nh_0}.')
+        if any(constraints.idxsh_0 > nh_0):
+            raise Exception(f'idxsh_0 = {constraints.idxsh_0} contains value > nh_0 = {nh_0}.')
+        if is_empty(constraints.lsh_0):
+            constraints.lsh_0 = np.zeros((nsh_0,))
+        elif constraints.lsh_0.shape[0] != nsh_0:
+            raise Exception('inconsistent dimension nsh_0, regarding idxsh_0, lsh_0.')
+        if is_empty(constraints.ush_0):
+            constraints.ush_0 = np.zeros((nsh_0,))
+        elif constraints.ush_0.shape[0] != nsh_0:
+            raise Exception('inconsistent dimension nsh_0, regarding idxsh_0, ush_0.')
+        dims.nsh_0 = nsh_0
+
+        nsphi_0 = constraints.idxsphi_0.shape[0]
+        if nsphi_0 > dims.nphi_0:
+            raise Exception(f'inconsistent dimension nsphi_0 = {nsphi_0}. Is greater than nphi_0 = {dims.nphi_0}.')
+        if any(constraints.idxsphi_0 > dims.nphi_0):
+            raise Exception(f'idxsphi_0 = {constraints.idxsphi_0} contains value > nphi_0 = {dims.nphi_0}.')
+        if is_empty(constraints.lsphi_0):
+            constraints.lsphi_0 = np.zeros((nsphi_0,))
+        elif constraints.lsphi_0.shape[0] != nsphi_0:
+            raise Exception('inconsistent dimension nsphi_0, regarding idxsphi_0, lsphi_0.')
+        if is_empty(constraints.usphi_0):
+            constraints.usphi_0 = np.zeros((nsphi_0,))
+        elif constraints.usphi_0.shape[0] != nsphi_0:
+            raise Exception('inconsistent dimension nsphi_0, regarding idxsphi_0, usphi_0.')
+        dims.nsphi_0 = nsphi_0
+
+        # Note: at stage 0 bounds on x are not slacked!
+        ns_0 = nsbu + nsg + nsphi_0 + nsh_0  # NOTE: nsbx not supported at stage 0
+
+        if cost.zl_0 is None and cost.zu_0 is None and cost.Zl_0 is None and cost.Zu_0 is None:
+            if ns_0 == 0:
+                cost.zl_0 = np.array([])
+                cost.zu_0 = np.array([])
+                cost.Zl_0 = np.array([])
+                cost.Zu_0 = np.array([])
+            elif ns_0 == ns:
+                cost.zl_0 = cost.zl
+                cost.zu_0 = cost.zu
+                cost.Zl_0 = cost.Zl
+                cost.Zu_0 = cost.Zu
+                print("Fields cost.[zl_0, zu_0, Zl_0, Zu_0] are not provided.")
+                print("Using entries [zl, zu, Zl, Zu] at intial node for slack penalties.\n")
+            else:
+                raise ValueError("Fields cost.[zl_0, zu_0, Zl_0, Zu_0] are not provided and cannot be inferred from other fields.\n")
+
+        wrong_fields = []
+        if cost.Zl_0.shape[0] != ns_0:
+            wrong_fields += ["Zl_0"]
+            dim = cost.Zl_0.shape[0]
+        elif cost.Zu_0.shape[0] != ns_0:
+            wrong_fields += ["Zu_0"]
+            dim = cost.Zu_0.shape[0]
+        elif cost.zl_0.shape[0] != ns_0:
+            wrong_fields += ["zl_0"]
+            dim = cost.zl_0.shape[0]
+        elif cost.zu_0.shape[0] != ns_0:
+            wrong_fields += ["zu_0"]
+            dim = cost.zu_0.shape[0]
+
+        if wrong_fields != []:
+            raise Exception(f'Inconsistent size for fields {", ".join(wrong_fields)}, with dimension {dim}, \n\t'\
+                + f'Detected ns_0 = {ns_0} = nsbu + nsg + nsh_0 + nsphi_0.\n\t'\
+                + f'With nsbu = {nsbu}, nsg = {nsg}, nsh_0 = {nsh_0}, nsphi_0 = {nsphi_0}.')
+        dims.ns_0 = ns_0
+
+        # slacks at terminal node
+        nsbx_e = constraints.idxsbx_e.shape[0]
+        if nsbx_e > nbx_e:
+            raise Exception(f'inconsistent dimension nsbx_e = {nsbx_e}. Is greater than nbx_e = {nbx_e}.')
+        if any(constraints.idxsbx_e > nbx_e):
+            raise Exception(f'idxsbx_e = {constraints.idxsbx_e} contains value > nbx_e = {nbx_e}.')
+        if is_empty(constraints.lsbx_e):
+            constraints.lsbx_e = np.zeros((nsbx_e,))
+        elif constraints.lsbx_e.shape[0] != nsbx_e:
+            raise Exception('inconsistent dimension nsbx_e, regarding idxsbx_e, lsbx_e.')
+        if is_empty(constraints.usbx_e):
+            constraints.usbx_e = np.zeros((nsbx_e,))
+        elif constraints.usbx_e.shape[0] != nsbx_e:
+            raise Exception('inconsistent dimension nsbx_e, regarding idxsbx_e, usbx_e.')
+        dims.nsbx_e = nsbx_e
+
+        nsh_e = constraints.idxsh_e.shape[0]
+        if nsh_e > nh_e:
+            raise Exception(f'inconsistent dimension nsh_e = {nsh_e}. Is greater than nh_e = {nh_e}.')
+        if nsh_e > nh_e:
+            raise Exception(f'inconsistent dimension nsh_e = {nsh_e}. Is greater than nh_e = {nh_e}.')
+        if is_empty(constraints.lsh_e):
+            constraints.lsh_e = np.zeros((nsh_e,))
+        elif constraints.lsh_e.shape[0] != nsh_e:
+            raise Exception('inconsistent dimension nsh_e, regarding idxsh_e, lsh_e.')
+        if is_empty(constraints.ush_e):
+            constraints.ush_e = np.zeros((nsh_e,))
+        elif constraints.ush_e.shape[0] != nsh_e:
+            raise Exception('inconsistent dimension nsh_e, regarding idxsh_e, ush_e.')
+        dims.nsh_e = nsh_e
+
+        nsphi_e = constraints.idxsphi_e.shape[0]
+        if nsphi_e > dims.nphi_e:
+            raise Exception(f'inconsistent dimension nsphi_e = {nsphi_e}. Is greater than nphi_e = {dims.nphi_e}.')
+        if nsphi_e > dims.nphi_e:
+            raise Exception(f'inconsistent dimension nsphi_e = {nsphi_e}. Is greater than nphi_e = {dims.nphi_e}.')
+        if is_empty(constraints.lsphi_e):
+            constraints.lsphi_e = np.zeros((nsphi_e,))
+        elif constraints.lsphi_e.shape[0] != nsphi_e:
+            raise Exception('inconsistent dimension nsphi_e, regarding idxsphi_e, lsphi_e.')
+        if is_empty(constraints.usphi_e):
+            constraints.usphi_e = np.zeros((nsphi_e,))
+        elif constraints.usphi_e.shape[0] != nsphi_e:
+            raise Exception('inconsistent dimension nsphi_e, regarding idxsphi_e, usphi_e.')
+        dims.nsphi_e = nsphi_e
+
+        nsg_e = constraints.idxsg_e.shape[0]
+        if nsg_e > ng_e:
+            raise Exception(f'inconsistent dimension nsg_e = {nsg_e}. Is greater than ng_e = {ng_e}.')
+        if nsg_e > ng_e:
+            raise Exception(f'inconsistent dimension nsg_e = {nsg_e}. Is greater than ng_e = {ng_e}.')
+        if is_empty(constraints.lsg_e):
+            constraints.lsg_e = np.zeros((nsg_e,))
+        elif constraints.lsg_e.shape[0] != nsg_e:
+            raise Exception('inconsistent dimension nsg_e, regarding idxsg_e, lsg_e.')
+        if is_empty(constraints.usg_e):
+            constraints.usg_e = np.zeros((nsg_e,))
+        elif constraints.usg_e.shape[0] != nsg_e:
+            raise Exception('inconsistent dimension nsg_e, regarding idxsg_e, usg_e.')
+        dims.nsg_e = nsg_e
+
+        # terminal
+        ns_e = nsbx_e + nsh_e + nsg_e + nsphi_e
+        wrong_field = ""
+        if cost.Zl_e.shape[0] != ns_e:
+            wrong_field = "Zl_e"
+            dim = cost.Zl_e.shape[0]
+        elif cost.Zu_e.shape[0] != ns_e:
+            wrong_field = "Zu_e"
+            dim = cost.Zu_e.shape[0]
+        elif cost.zl_e.shape[0] != ns_e:
+            wrong_field = "zl_e"
+            dim = cost.zl_e.shape[0]
+        elif cost.zu_e.shape[0] != ns_e:
+            wrong_field = "zu_e"
+            dim = cost.zu_e.shape[0]
+
+        if wrong_field != "":
+            raise Exception(f'Inconsistent size for field {wrong_field}, with dimension {dim}, \n\t'\
+                + f'Detected ns_e = {ns_e} = nsbx_e + nsg_e + nsh_e + nsphi_e.\n\t'\
+                + f'With nsbx_e = {nsbx_e}, nsg_e = {nsg_e}, nsh_e = {nsh_e}, nsphi_e = {nsphi_e}.')
+
+        dims.ns_e = ns_e
+
+        # discretization
+        if opts.N_horizon is None and dims.N is None:
+            raise Exception('N_horizon not provided.')
+        elif opts.N_horizon is None and dims.N is not None:
+            opts.N_horizon = dims.N
+            print("field AcadosOcpDims.N has been migrated to AcadosOcpOptions.N_horizon. setting AcadosOcpOptions.N_horizon = N. For future comppatibility, please use AcadosOcpOptions.N_horizon directly.")
+        elif opts.N_horizon is not None and dims.N is not None and opts.N_horizon != dims.N:
+            raise Exception(f'Inconsistent dimension N, regarding N = {dims.N}, N_horizon = {opts.N_horizon}.')
+        else:
+            dims.N = opts.N_horizon
+
+        if not isinstance(opts.tf, (float, int)):
+            raise Exception(f'Time horizon tf should be float provided, got tf = {opts.tf}.')
+
+        if is_empty(opts.time_steps) and is_empty(opts.shooting_nodes):
+            # uniform discretization
+            opts.time_steps = opts.tf / opts.N_horizon * np.ones((opts.N_horizon,))
+            opts.shooting_nodes = np.concatenate((np.array([0.]), np.cumsum(opts.time_steps)))
+
+        elif not is_empty(opts.shooting_nodes):
+            if np.shape(opts.shooting_nodes)[0] != opts.N_horizon+1:
+                raise Exception('inconsistent dimension N, regarding shooting_nodes.')
+
+            time_steps = opts.shooting_nodes[1:] - opts.shooting_nodes[0:-1]
+            # identify constant time_steps: due to numerical reasons the content of time_steps might vary a bit
+            avg_time_steps = np.average(time_steps)
+            # criterion for constant time step detection: the min/max difference in values normalized by the average
+            check_const_time_step = (np.max(time_steps)-np.min(time_steps)) / avg_time_steps
+            # if the criterion is small, we have a constant time_step
+            if check_const_time_step < 1e-9:
+                time_steps[:] = avg_time_steps  # if we have a constant time_step: apply the average time_step
+
+            opts.time_steps = time_steps
+
+        elif not is_empty(opts.time_steps) and is_empty(opts.shooting_nodes):
+            # compute shooting nodes from time_steps for convenience
+            opts.shooting_nodes = np.concatenate((np.array([0.]), np.cumsum(opts.time_steps)))
+
+        elif (not is_empty(opts.time_steps)) and (not is_empty(opts.shooting_nodes)):
+            Exception('Please provide either time_steps or shooting_nodes for nonuniform discretization')
+
+        tf = np.sum(opts.time_steps)
+        if (tf - opts.tf) / tf > 1e-13:
+            raise Exception(f'Inconsistent discretization: {opts.tf}'\
+                f' = tf != sum(opts.time_steps) = {tf}.')
+
+        # set integrator time automatically
+        opts.Tsim = opts.time_steps[0]
+
+        # num_steps
+        if isinstance(opts.sim_method_num_steps, np.ndarray) and opts.sim_method_num_steps.size == 1:
+            opts.sim_method_num_steps = opts.sim_method_num_steps.item()
+
+        if isinstance(opts.sim_method_num_steps, (int, float)) and opts.sim_method_num_steps % 1 == 0:
+            opts.sim_method_num_steps = opts.sim_method_num_steps * np.ones((opts.N_horizon,), dtype=np.int64)
+        elif isinstance(opts.sim_method_num_steps, np.ndarray) and opts.sim_method_num_steps.size == opts.N_horizon \
+            and np.all(np.equal(np.mod(opts.sim_method_num_steps, 1), 0)):
+            opts.sim_method_num_steps = np.reshape(opts.sim_method_num_steps, (opts.N_horizon,)).astype(np.int64)
+        else:
+            raise Exception("Wrong value for sim_method_num_steps. Should be either int or array of ints of shape (N,).")
+
+        # num_stages
+        if isinstance(opts.sim_method_num_stages, np.ndarray) and opts.sim_method_num_stages.size == 1:
+            opts.sim_method_num_stages = opts.sim_method_num_stages.item()
+
+        if isinstance(opts.sim_method_num_stages, (int, float)) and opts.sim_method_num_stages % 1 == 0:
+            opts.sim_method_num_stages = opts.sim_method_num_stages * np.ones((opts.N_horizon,), dtype=np.int64)
+        elif isinstance(opts.sim_method_num_stages, np.ndarray) and opts.sim_method_num_stages.size == opts.N_horizon \
+            and np.all(np.equal(np.mod(opts.sim_method_num_stages, 1), 0)):
+            opts.sim_method_num_stages = np.reshape(opts.sim_method_num_stages, (opts.N_horizon,)).astype(np.int64)
+        else:
+            raise Exception("Wrong value for sim_method_num_stages. Should be either int or array of ints of shape (N,).")
+
+        # jac_reuse
+        if isinstance(opts.sim_method_jac_reuse, np.ndarray) and opts.sim_method_jac_reuse.size == 1:
+            opts.sim_method_jac_reuse = opts.sim_method_jac_reuse.item()
+
+        if isinstance(opts.sim_method_jac_reuse, (int, float)) and opts.sim_method_jac_reuse % 1 == 0:
+            opts.sim_method_jac_reuse = opts.sim_method_jac_reuse * np.ones((opts.N_horizon,), dtype=np.int64)
+        elif isinstance(opts.sim_method_jac_reuse, np.ndarray) and opts.sim_method_jac_reuse.size == opts.N_horizon \
+            and np.all(np.equal(np.mod(opts.sim_method_jac_reuse, 1), 0)):
+            opts.sim_method_jac_reuse = np.reshape(opts.sim_method_jac_reuse, (opts.N_horizon,)).astype(np.int64)
+        else:
+            raise Exception("Wrong value for sim_method_jac_reuse. Should be either int or array of ints of shape (N,).")
+
+        # fixed hessian
+        if opts.fixed_hess:
+            if opts.hessian_approx == 'EXACT':
+                raise Exception('fixed_hess is not compatible with hessian_approx == EXACT.')
+            if cost.cost_type != "LINEAR_LS":
+                raise Exception('fixed_hess is only compatible LINEAR_LS cost_type.')
+            if cost.cost_type_0 != "LINEAR_LS":
+                raise Exception('fixed_hess is only compatible LINEAR_LS cost_type_0.')
+            if cost.cost_type_e != "LINEAR_LS":
+                raise Exception('fixed_hess is only compatible LINEAR_LS cost_type_e.')
+
+        # solution sensitivities
+        bgp_type_constraint_pairs = [
+            ("path", model.con_phi_expr), ("initial", model.con_phi_expr_0), ("terminal", model.con_phi_expr_e),
+            ("path", model.con_r_expr), ("initial", model.con_r_expr_0), ("terminal", model.con_r_expr_e)
+        ]
+        bgh_type_constraint_pairs = [
+            ("path", model.con_h_expr), ("initial", model.con_h_expr_0), ("terminal", model.con_h_expr_e),
+        ]
+
+        if opts.with_solution_sens_wrt_params:
+            if dims.np_global == 0:
+                raise Exception('with_solution_sens_wrt_params is only compatible if global parameters `p_global` are provided. Sensitivities wrt parameters have been refactored to use p_global instead of p in https://github.com/acados/acados/pull/1316. Got emty p_global.')
+            if cost.cost_type != "EXTERNAL" or cost.cost_type_0 != "EXTERNAL" or cost.cost_type_e != "EXTERNAL":
+                raise Exception('with_solution_sens_wrt_params is only compatible with EXTERNAL cost_type.')
+            if opts.integrator_type != "DISCRETE":
+                raise Exception('with_solution_sens_wrt_params is only compatible with DISCRETE dynamics.')
+            for horizon_type, constraint in bgp_type_constraint_pairs:
+                if constraint is not None and any(ca.which_depends(constraint, model.p_global)):
+                    raise Exception(f"with_solution_sens_wrt_params is not supported for BGP constraints that depend on p_global. Got dependency on p_global for {horizon_type} constraint.")
+            for horizon_type, constraint in bgh_type_constraint_pairs:
+                if constraint is not None and model.p_global is not None and not ca.is_linear(constraint, model.p_global):
+                    raise Exception(f"with_solution_sens_wrt_params does not work for h constraint nonlinear in p_global yet. Got nonlinear dependency on p_global for {horizon_type} constraint.")
+
+        if opts.with_value_sens_wrt_params:
+            if dims.np_global == 0:
+                raise Exception('with_value_sens_wrt_params is only compatible if global parameters `p_global` are provided. Sensitivities wrt parameters have been refactored to use p_global instead of p in https://github.com/acados/acados/pull/1316. Got emty p_global.')
+            if cost.cost_type != "EXTERNAL" or cost.cost_type_0 != "EXTERNAL" or cost.cost_type_e != "EXTERNAL":
+                raise Exception('with_value_sens_wrt_params is only compatible with EXTERNAL cost_type.')
+            if opts.integrator_type != "DISCRETE":
+                raise Exception('with_value_sens_wrt_params is only compatible with DISCRETE dynamics.')
+            for horizon_type, constraint in bgp_type_constraint_pairs:
+                if constraint is not None and any(ca.which_depends(constraint, model.p_global)):
+                    raise Exception(f"with_value_sens_wrt_params is not supported for BGP constraints that depend on p_global. Got dependency on p_global for {horizon_type} constraint.")
+            for horizon_type, constraint in bgh_type_constraint_pairs:
+                if constraint is not None and model.p_global is not None and not ca.is_linear(constraint, model.p_global):
+                    raise Exception(f"with_value_sens_wrt_params does not work for h constraint nonlinear in p_global yet. Got nonlinear dependency on p_global for {horizon_type} constraint.")
+
+        if opts.qp_solver_cond_N is None:
+            opts.qp_solver_cond_N = opts.N_horizon
+
+        if opts.qp_solver_cond_block_size is not None:
+            if sum(opts.qp_solver_cond_block_size) != opts.N_horizon:
+                raise Exception(f'sum(qp_solver_cond_block_size) = {sum(opts.qp_solver_cond_block_size)} != N = {opts.N_horizon}.')
+            if len(opts.qp_solver_cond_block_size) != opts.qp_solver_cond_N+1:
+                raise Exception(f'qp_solver_cond_block_size = {opts.qp_solver_cond_block_size} should have length qp_solver_cond_N+1 = {opts.qp_solver_cond_N+1}.')
+
+        if opts.nlp_solver_type == "DDP":
+            if opts.qp_solver != "PARTIAL_CONDENSING_HPIPM" or opts.qp_solver_cond_N != opts.N_horizon:
+                raise Exception(f'DDP solver only supported for PARTIAL_CONDENSING_HPIPM with qp_solver_cond_N == N, got qp solver {opts.qp_solver} and qp_solver_cond_N {opts.qp_solver_cond_N}, N {opts.N_horizon}.')
+            if any([dims.nbu, dims.nbx, dims.ng, dims.nh, dims.nphi]):
+                raise Exception(f'DDP only supports initial state constraints, got path constraints. Dimensions: dims.nbu = {dims.nbu}, dims.nbx = {dims.nbx}, dims.ng = {dims.ng}, dims.nh = {dims.nh}, dims.nphi = {dims.nphi}')
+            if any([dims.ng_e, dims.nphi_e, dims.nh_e]):
+                raise Exception('DDP only supports initial state constraints, got terminal constraints.')
+
+        ddp_with_merit_or_funnel = opts.globalization == 'FUNNEL_L1PEN_LINESEARCH' or (opts.nlp_solver_type == "DDP" and opts.globalization == 'MERIT_BACKTRACKING')
+        # Set default parameters for globalization
+        if opts.globalization_alpha_min is None:
+            if ddp_with_merit_or_funnel:
+                opts.globalization_alpha_min = 1e-17
+            else:
+                opts.globalization_alpha_min = 0.05
+
+        if opts.globalization_alpha_reduction is None:
+            if ddp_with_merit_or_funnel:
+                opts.globalization_alpha_reduction = 0.5
+            else:
+                opts.globalization_alpha_reduction = 0.7
+
+        if opts.globalization_eps_sufficient_descent is None:
+            if ddp_with_merit_or_funnel:
+                opts.globalization_eps_sufficient_descent = 1e-6
+            else:
+                opts.globalization_eps_sufficient_descent = 1e-4
+
+        if opts.eval_residual_at_max_iter is None:
+            if ddp_with_merit_or_funnel:
+                opts.eval_residual_at_max_iter = True
+            else:
+                opts.eval_residual_at_max_iter = False
+
+        if opts.globalization_full_step_dual is None:
+            if ddp_with_merit_or_funnel:
+                opts.globalization_full_step_dual = 1
+            else:
+                opts.globalization_full_step_dual = 0
+
+        # sanity check for Funnel globalization and SQP
+        if opts.globalization == 'FUNNEL_L1PEN_LINESEARCH' and opts.nlp_solver_type != 'SQP':
+            raise Exception('FUNNEL_L1PEN_LINESEARCH only supports SQP.')
+
+        # termination
+        if opts.nlp_solver_tol_min_step_norm == None:
+            if ddp_with_merit_or_funnel:
+                opts.nlp_solver_tol_min_step_norm = 1e-12
+            else:
+                opts.nlp_solver_tol_min_step_norm = 0.0
+
+        # zoRO
+        if self.zoro_description is not None:
+            if not isinstance(self.zoro_description, ZoroDescription):
+                raise Exception('zoro_description should be of type ZoroDescription or None')
+            else:
+                self.zoro_description = process_zoro_description(self.zoro_description)
+
+        return
+
+
+    def _get_external_function_header_templates(self, ) -> list:
+        dims = self.dims
+        name = self.model.name
+        template_list = []
+
+        # dynamics
+        model_dir = os.path.join(self.code_export_directory, f'{name}_model')
+        template_list.append(('model.in.h', f'{name}_model.h', model_dir))
+        # constraints
+        if any(np.array([dims.nh, dims.nh_e, dims.nh_0, dims.nphi, dims.nphi_e, dims.nphi_0]) > 0):
+            constraints_dir = os.path.join(self.code_export_directory, f'{name}_constraints')
+            template_list.append(('constraints.in.h', f'{name}_constraints.h', constraints_dir))
+        # cost
+        if any([self.cost.cost_type != 'LINEAR_LS', self.cost.cost_type_0 != 'LINEAR_LS', self.cost.cost_type_e != 'LINEAR_LS']):
+            cost_dir = os.path.join(self.code_export_directory, f'{name}_cost')
+            template_list.append(('cost.in.h', f'{name}_cost.h', cost_dir))
+
+        return template_list
+
+
+    def __get_template_list(self, cmake_builder=None) -> list:
+        """
+        returns a list of tuples in the form:
+        (input_filename, output_filname)
+        or
+        (input_filename, output_filname, output_directory)
+        """
+        name = self.model.name
+        template_list = []
+
+        template_list.append(('main.in.c', f'main_{name}.c'))
+        template_list.append(('acados_solver.in.c', f'acados_solver_{name}.c'))
+        template_list.append(('acados_solver.in.h', f'acados_solver_{name}.h'))
+        template_list.append(('acados_solver.in.pxd', f'acados_solver.pxd'))
+        if cmake_builder is not None:
+            template_list.append(('CMakeLists.in.txt', 'CMakeLists.txt'))
+        else:
+            template_list.append(('Makefile.in', 'Makefile'))
+
+        # sim
+        if self.solver_options.integrator_type != 'DISCRETE':
+            template_list.append(('acados_sim_solver.in.c', f'acados_sim_solver_{name}.c'))
+            template_list.append(('acados_sim_solver.in.h', f'acados_sim_solver_{name}.h'))
+            template_list.append(('main_sim.in.c', f'main_sim_{name}.c'))
+
+        # model
+        template_list += self._get_external_function_header_templates()
+
+        if self.dims.np_global > 0:
+            template_list.append(('p_global_precompute_fun.in.h', f'{self.name}_p_global_precompute_fun.h'))
+
+        # Simulink
+        if self.simulink_opts is not None:
+            template_file = os.path.join('matlab_templates', 'acados_solver_sfun.in.c')
+            template_list.append((template_file, f'acados_solver_sfunction_{name}.c'))
+            template_file = os.path.join('matlab_templates', 'make_sfun.in.m')
+            template_list.append((template_file, f'make_sfun_{name}.m'))
+            template_file = os.path.join('matlab_templates', 'acados_sim_solver_sfun.in.c')
+            template_list.append((template_file, f'acados_sim_solver_sfunction_{name}.c'))
+            template_file = os.path.join('matlab_templates', 'make_sfun_sim.in.m')
+            template_list.append((template_file, f'make_sfun_sim_{name}.m'))
+
+        return template_list
+
+
+    def render_templates(self, cmake_builder=None):
+
+        # check json file
+        json_path = os.path.abspath(self.json_file)
+        if not os.path.exists(json_path):
+            raise Exception(f'Path "{json_path}" not found!')
+
+        template_list = self.__get_template_list(cmake_builder=cmake_builder)
+
+        # Render templates
+        for tup in template_list:
+            output_dir = self.code_export_directory if len(tup) <= 2 else tup[2]
+            render_template(tup[0], tup[1], output_dir, json_path)
+
+        # Custom templates
+        acados_template_path = os.path.dirname(os.path.abspath(__file__))
+        custom_template_glob = os.path.join(acados_template_path, 'custom_update_templates', '*')
+        for tup in self.solver_options.custom_templates:
+            render_template(tup[0], tup[1], self.code_export_directory, json_path, template_glob=custom_template_glob)
+        return
+
+
+    def dump_to_json(self) -> None:
+        with open(self.json_file, 'w') as f:
+            json.dump(self.to_dict(), f, default=make_object_json_dumpable, indent=4, sort_keys=True)
+        return
+
+    def generate_external_functions(self, context: Optional[GenerateContext] = None) -> GenerateContext:
+
+        if context is None:
+            # options for code generation
+            code_gen_opts = dict()
+            code_gen_opts['generate_hess'] = self.solver_options.hessian_approx == 'EXACT'
+            code_gen_opts['with_solution_sens_wrt_params'] = self.solver_options.with_solution_sens_wrt_params
+            code_gen_opts['with_value_sens_wrt_params'] = self.solver_options.with_value_sens_wrt_params
+            code_gen_opts['code_export_directory'] = self.code_export_directory
+
+            context = GenerateContext(self.model.p_global, self.name, code_gen_opts)
+
+        context = self._setup_code_generation_context(context)
+        context.finalize()
+        self.__external_function_files_model = context.get_external_function_file_list(ocp_specific=False)
+        self.__external_function_files_ocp = context.get_external_function_file_list(ocp_specific=True)
+        self.dims.n_global_data = context.get_n_global_data()
+
+        return context
+
+
+    def _setup_code_generation_context(self, context: GenerateContext) -> GenerateContext:
+
+        model = self.model
+        constraints = self.constraints
+
+        code_gen_opts = context.opts
+
+        # create code_export_dir, model_dir
+        model_dir = os.path.join(code_gen_opts['code_export_directory'], model.name + '_model')
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+
+        check_casadi_version()
+        if self.model.dyn_ext_fun_type == 'casadi':
+            if self.solver_options.integrator_type == 'ERK':
+                generate_c_code_explicit_ode(context, model, model_dir)
+            elif self.solver_options.integrator_type == 'IRK':
+                generate_c_code_implicit_ode(context, model, model_dir)
+            elif self.solver_options.integrator_type == 'LIFTED_IRK':
+                if model.t != []:
+                    raise NotImplementedError("LIFTED_IRK with time-varying dynamics not implemented yet.")
+                generate_c_code_implicit_ode(context, model, model_dir)
+            elif self.solver_options.integrator_type == 'GNSF':
+                generate_c_code_gnsf(context, model, model_dir)
+            elif self.solver_options.integrator_type == 'DISCRETE':
+                generate_c_code_discrete_dynamics(context, model, model_dir)
+            else:
+                raise Exception("ocp_generate_external_functions: unknown integrator type.")
+        else:
+            target_dir = os.path.join(code_gen_opts['code_export_directory'], model_dir)
+            target_location = os.path.join(target_dir, model.dyn_generic_source)
+            shutil.copyfile(model.dyn_generic_source, target_location)
+            context.add_external_function_file(model.dyn_generic_source, target_dir)
+
+        stage_types = ['initial', 'path', 'terminal']
+
+        for attr_nh, attr_nphi, stage_type in zip(['nh_0', 'nh', 'nh_e'], ['nphi_0', 'nphi', 'nphi_e'], stage_types):
+            if getattr(self.dims, attr_nh) > 0 or getattr(self.dims, attr_nphi) > 0:
+                generate_c_code_constraint(context, model, constraints, stage_type)
+
+        for attr, stage_type in zip(['cost_type_0', 'cost_type', 'cost_type_e'], stage_types):
+            if getattr(self.cost, attr) == 'NONLINEAR_LS':
+                generate_c_code_nls_cost(context, model, stage_type)
+            elif getattr(self.cost, attr) == 'CONVEX_OVER_NONLINEAR':
+                generate_c_code_conl_cost(context, model, stage_type)
+            elif getattr(self.cost, attr) == 'EXTERNAL':
+                generate_c_code_external_cost(context, model, stage_type)
+            # TODO: generic
+
+        return context
+
+    def remove_x0_elimination(self) -> None:
+        self.constraints.idxbxe_0 = np.zeros((0,))
+        self.dims.nbxe_0 = 0
+        self.constraints.__has_x0 = False
+        return
+
+
+    def to_dict(self) -> dict:
+        # Copy ocp object dictionary
+        ocp_dict = dict(deepcopy(self).__dict__)
+
+        # convert acados classes to dicts
+        for key, v in ocp_dict.items():
+            if isinstance(v, (AcadosModel, AcadosOcpDims, AcadosOcpConstraints, AcadosOcpCost, AcadosOcpOptions, ZoroDescription)):
+                ocp_dict[key]=dict(getattr(self, key).__dict__)
+
+        ocp_dict = format_class_dict(ocp_dict)
+        return ocp_dict
+
+
+    def copy_path_cost_to_stage_0(self):
+        """Set all cost definitions at stage 0 to the corresponding path cost definitions."""
+        cost = self.cost
+        model = self.model
+
+        cost.cost_type_0 = cost.cost_type
+        cost.W_0 = cost.W
+        cost.Vx_0 = cost.Vx
+        cost.Vu_0 = cost.Vu
+        cost.Vz_0 = cost.Vz
+        cost.yref_0 = cost.yref
+        cost.cost_ext_fun_type_0 = cost.cost_ext_fun_type
+
+        model.cost_y_expr_0 = model.cost_y_expr
+        model.cost_expr_ext_cost_0 = model.cost_expr_ext_cost
+        model.cost_expr_ext_cost_custom_hess_0 = model.cost_expr_ext_cost_custom_hess
+        model.cost_psi_expr_0 = model.cost_psi_expr
+        model.cost_r_in_psi_expr_0 = model.cost_r_in_psi_expr
+        return
+
+    def translate_nls_cost_to_conl(self):
+        """
+        Translates a NONLINEAR_LS cost to a CONVEX_OVER_NONLINEAR cost.
+        """
+        casadi_symbol = self.model.get_casadi_symbol()
+        # initial cost
+        if self.cost.cost_type_0 is None:
+            print("Initial cost is None, skipping.")
+        elif self.cost.cost_type_0 == "CONVEX_OVER_NONLINEAR":
+            print("Initial cost is already CONVEX_OVER_NONLINEAR, skipping.")
+        elif self.cost.cost_type_0 == "NONLINEAR_LS":
+            print("Translating initial NONLINEAR_LS cost to CONVEX_OVER_NONLINEAR.")
+            self.cost.cost_type_0 = "CONVEX_OVER_NONLINEAR"
+            ny_0 = self.model.cost_y_expr_0.shape[0]
+            conl_res_0 = casadi_symbol('residual_conl', ny_0)
+            self.model.cost_r_in_psi_expr_0 = conl_res_0
+            self.model.cost_psi_expr_0 = .5 * conl_res_0.T @ ca.sparsify(ca.DM(self.cost.W_0)) @ conl_res_0
+        else:
+            raise Exception(f"Terminal cost type must be NONLINEAR_LS, got cost_type_0 {self.cost.cost_type_0}.")
+
+        # path cost
+        if self.cost.cost_type == "CONVEX_OVER_NONLINEAR":
+            print("Path cost is already CONVEX_OVER_NONLINEAR, skipping.")
+        elif self.cost.cost_type == "NONLINEAR_LS":
+            print("Translating path NONLINEAR_LS cost to CONVEX_OVER_NONLINEAR.")
+            self.cost.cost_type = "CONVEX_OVER_NONLINEAR"
+            ny = self.model.cost_y_expr.shape[0]
+            conl_res = casadi_symbol('residual_conl', ny)
+            self.model.cost_r_in_psi_expr = conl_res
+            self.model.cost_psi_expr = .5 * conl_res.T @ ca.sparsify(ca.DM(self.cost.W)) @ conl_res
+        else:
+            raise Exception(f"Path cost type must be NONLINEAR_LS, got cost_type {self.cost.cost_type}.")
+
+        # terminal cost
+        if self.cost.cost_type_e == "CONVEX_OVER_NONLINEAR":
+            print("Terminal cost is already CONVEX_OVER_NONLINEAR, skipping.")
+        elif self.cost.cost_type_e == "NONLINEAR_LS":
+            print("Translating terminal NONLINEAR_LS cost to CONVEX_OVER_NONLINEAR.")
+            self.cost.cost_type_e = "CONVEX_OVER_NONLINEAR"
+            ny_e = self.model.cost_y_expr_e.shape[0]
+            conl_res_e = casadi_symbol('residual_conl', ny_e)
+            self.model.cost_r_in_psi_expr_e = conl_res_e
+            self.model.cost_psi_expr_e = .5 * conl_res_e.T @ ca.sparsify(ca.DM(self.cost.W_e)) @ conl_res_e
+        else:
+            raise Exception(f"Initial cost type must be NONLINEAR_LS, got cost_type_e {self.cost.cost_type_e}.")
+        return
+
+
+    def translate_cost_to_external_cost(self, parametric_yref: bool = False):
+        """
+        Translates cost to EXTERNAL cost.
+        parametric_yref: If true, augment with additional parameters for yref_0, yref, yref_e.
+        """
+        # make yref a parameter
+        yref_0 = self.cost.yref_0
+        yref = self.cost.yref
+        yref_e = self.cost.yref_e
+
+        if parametric_yref:
+            symbol = self.model.get_casadi_symbol()
+            if self.cost.yref_0 is not None:
+                param_yref_0 = symbol('param_yref_0', len(self.cost.yref_0))
+                self.model.p = ca.vertcat(self.model.p, param_yref_0)
+                self.parameter_values = np.concatenate((self.parameter_values, self.cost.yref_0))
+                yref_0 = param_yref_0
+
+            if self.cost.yref is not None:
+                param_yref = symbol('param_yref', len(self.cost.yref))
+                self.model.p = ca.vertcat(self.model.p, param_yref)
+                self.parameter_values = np.concatenate((self.parameter_values, self.cost.yref))
+                yref = param_yref
+
+            if self.cost.yref_e is not None:
+                param_yref_e = symbol('param_yref_e', len(self.cost.yref_e))
+                self.model.p = ca.vertcat(self.model.p, param_yref_e)
+                self.parameter_values = np.concatenate((self.parameter_values, self.cost.yref_e))
+                yref_e = param_yref_e
+
+        # initial stage
+        if self.cost.cost_type_0 == "LINEAR_LS":
+            self.model.cost_expr_ext_cost_0 = \
+                self.__translate_ls_cost_to_external_cost(self.model.x, self.model.u, self.model.z,
+                                                          self.cost.Vx_0, self.cost.Vu_0, self.cost.Vz_0,
+                                                          yref_0, self.cost.W_0)
+        elif self.cost.cost_type_0 == "NONLINEAR_LS":
+            self.model.cost_expr_ext_cost_0 = \
+                self.__translate_nls_cost_to_external_cost(self.model.cost_y_expr_0, yref_0, self.cost.W_0)
+
+        elif self.cost.cost_type_0 == "CONVEX_OVER_NONLINEAR":
+            self.model.cost_expr_ext_cost_0 = \
+                self.__translate_conl_cost_to_external_cost(self.model.cost_r_in_psi_expr_0, self.model.cost_psi_expr_0,
+                                                            self.model.cost_y_expr_0, yref_0)
+        # intermediate stages
+        if self.cost.cost_type == "LINEAR_LS":
+            self.model.cost_expr_ext_cost = \
+                self.__translate_ls_cost_to_external_cost(self.model.x, self.model.u, self.model.z,
+                                                          self.cost.Vx, self.cost.Vu, self.cost.Vz,
+                                                          yref, self.cost.W)
+        elif self.cost.cost_type == "NONLINEAR_LS":
+                self.model.cost_expr_ext_cost = \
+                    self.__translate_nls_cost_to_external_cost(self.model.cost_y_expr, yref, self.cost.W)
+        elif self.cost.cost_type == "CONVEX_OVER_NONLINEAR":
+            self.model.cost_expr_ext_cost = \
+                self.__translate_conl_cost_to_external_cost(self.model.cost_r_in_psi_expr, self.model.cost_psi_expr,
+                                                            self.model.cost_y_expr, yref)
+        # terminal stage
+        if self.cost.cost_type_e == "LINEAR_LS":
+            self.model.cost_expr_ext_cost_e = \
+                self.__translate_ls_cost_to_external_cost(self.model.x, self.model.u, self.model.z,
+                                                          self.cost.Vx_e, None, None,
+                                                          yref_e, self.cost.W_e)
+        elif self.cost.cost_type_e == "NONLINEAR_LS":
+            self.model.cost_expr_ext_cost_e = \
+                self.__translate_nls_cost_to_external_cost(self.model.cost_y_expr_e, yref_e, self.cost.W_e)
+        elif self.cost.cost_type_e == "CONVEX_OVER_NONLINEAR":
+            self.model.cost_expr_ext_cost_e = \
+                self.__translate_conl_cost_to_external_cost(self.model.cost_r_in_psi_expr_e, self.model.cost_psi_expr_e,
+                                                            self.model.cost_y_expr_e, yref_e)
+        if self.cost.cost_type_0 is not None:
+            self.cost.cost_type_0 = 'EXTERNAL'
+        self.cost.cost_type = 'EXTERNAL'
+        self.cost.cost_type_e = 'EXTERNAL'
+
+
+    @staticmethod
+    def __translate_ls_cost_to_external_cost(x, u, z, Vx, Vu, Vz, yref, W):
+        res = 0
+        if Vx is not None:
+            res += Vx @ x
+        if Vu is not None and casadi_length(u) > 0:
+            res += Vu @ u
+        if Vz is not None and casadi_length(z) > 0:
+            res += Vz @ z
+        res -= yref
+
+        return 0.5 * (res.T @ W @ res)
+
+    @staticmethod
+    def __translate_nls_cost_to_external_cost(y_expr, yref, W):
+        res = y_expr - yref
+        return 0.5 * (res.T @ W @ res)
+
+    @staticmethod
+    def __translate_conl_cost_to_external_cost(r, psi, y_expr, yref):
+        return ca.substitute(psi, r, y_expr - yref)
+
+    def formulate_constraint_as_L2_penalty(
+        self,
+        constr_expr: ca.SX,
+        weight: float,
+        upper_bound: Optional[float],
+        lower_bound: Optional[float],
+        residual_name: str = "new_residual",
+        constraint_type: str = "path",
+    ) -> None:
+        """
+        Formulate a constraint as an L2 penalty and add it to the current cost.
+        """
+
+        casadi_symbol = self.model.get_casadi_symbol()
+
+        if upper_bound is None and lower_bound is None:
+            raise ValueError("Either upper or lower bound must be provided.")
+
+        # compute violation expression
+        violation_expr = 0.0
+        y_ref_new = np.zeros(1)
+        if upper_bound is not None:
+            violation_expr = ca.fmax(violation_expr, (constr_expr - upper_bound))
+        if lower_bound is not None:
+            violation_expr = ca.fmax(violation_expr, (lower_bound - constr_expr))
+
+        # add penalty as cost
+        if constraint_type == "path":
+            self.cost.yref = np.concatenate((self.cost.yref, y_ref_new))
+            self.model.cost_y_expr = ca.vertcat(self.model.cost_y_expr, violation_expr)
+            if self.cost.cost_type == "NONLINEAR_LS":
+                self.cost.W = block_diag(self.cost.W, weight)
+            elif self.cost.cost_type == "CONVEX_OVER_NONLINEAR":
+                new_residual = casadi_symbol(residual_name, constr_expr.shape)
+                self.model.cost_r_in_psi_expr = ca.vertcat(self.model.cost_r_in_psi_expr, new_residual)
+                self.model.cost_psi_expr += .5 * weight * new_residual**2
+            elif self.cost.cost_type == "EXTERNAL":
+                self.model.cost_expr_ext_cost += .5 * weight * violation_expr**2
+            else:
+                raise NotImplementedError(f"formulate_constraint_as_L2_penalty not implemented for path cost with cost_type {self.cost.cost_type}.")
+        elif constraint_type == "initial":
+            self.cost.yref_0 = np.concatenate((self.cost.yref_0, y_ref_new))
+            self.model.cost_y_expr_0 = ca.vertcat(self.model.cost_y_expr_0, violation_expr)
+            if self.cost.cost_type_0 == "NONLINEAR_LS":
+                self.cost.W_0 = block_diag(self.cost.W_0, weight)
+            elif self.cost.cost_type_0 == "CONVEX_OVER_NONLINEAR":
+                new_residual = casadi_symbol(residual_name, constr_expr.shape)
+                self.model.cost_r_in_psi_expr_0 = ca.vertcat(self.model.cost_r_in_psi_expr_0, new_residual)
+                self.model.cost_psi_expr_0 += .5 * weight * new_residual**2
+            elif self.cost.cost_type_0 == "EXTERNAL":
+                self.model.cost_expr_ext_cost_0 += .5 * weight * violation_expr**2
+            else:
+                raise NotImplementedError(f"formulate_constraint_as_L2_penalty not implemented for initial cost with cost_type_0 {self.cost.cost_type_0}.")
+        elif constraint_type == "terminal":
+            self.cost.yref_e = np.concatenate((self.cost.yref_e, y_ref_new))
+            self.model.cost_y_expr_e = ca.vertcat(self.model.cost_y_expr_e, violation_expr)
+            if self.cost.cost_type_e == "NONLINEAR_LS":
+                self.cost.W_e = block_diag(self.cost.W_e, weight)
+            elif self.cost.cost_type_e == "CONVEX_OVER_NONLINEAR":
+                new_residual = casadi_symbol(residual_name, constr_expr.shape)
+                self.model.cost_r_in_psi_expr_e = ca.vertcat(self.model.cost_r_in_psi_expr_e, new_residual)
+                self.model.cost_psi_expr_e += .5 * weight * new_residual**2
+            elif self.cost.cost_type_e == "EXTERNAL":
+                self.model.cost_expr_ext_cost_e += .5 * weight * violation_expr**2
+            else:
+                raise NotImplementedError(f"formulate_constraint_as_L2_penalty not implemented for terminal cost with cost_type_e {self.cost.cost_type_e}.")
+        return
+
+
+    def formulate_constraint_as_Huber_penalty(
+        self,
+        constr_expr: Union[ca.SX, ca.MX],
+        weight: float,
+        upper_bound: Optional[float]=None,
+        lower_bound: Optional[float]=None,
+        residual_name: str = "new_residual",
+        huber_delta: float = 1.0,
+        use_xgn = True,
+        min_hess = 0,
+    ) -> None:
+        """
+        Formulate a constraint as Huber penalty and add it to the current cost.
+
+        use_xgn: if true an XGN Hessian is used, if false a GGN Hessian (= exact Hessian, in this case) is used.
+        min_hess: provide a minimum value for the hessian
+        weight: weight of the penalty corresponding to Hessian in quadratic region
+        """
+        if isinstance(constr_expr, ca.MX):
+            casadi_symbol = ca.MX.sym
+            casadi_zeros = ca.MX.zeros
+        elif isinstance(constr_expr, ca.SX):
+            casadi_symbol = ca.SX.sym
+            casadi_zeros = ca.SX.zeros
+
+        # if (upper_bound is None or lower_bound is None):
+        #     raise NotImplementedError("only symmetric Huber for now")
+        if upper_bound is None and lower_bound is None:
+            raise ValueError("Either upper or lower bound must be provided.")
+
+        if self.cost.cost_type != "CONVEX_OVER_NONLINEAR":
+            raise Exception("Huber penalty is only supported for CONVEX_OVER_NONLINEAR cost type.")
+
+        if use_xgn and self.model.cost_conl_custom_outer_hess is None:
+            # switch to XGN Hessian start with exact Hessian of previously defined cost
+            exact_cost_hess = ca.hessian(self.model.cost_psi_expr, self.model.cost_r_in_psi_expr)[0]
+            self.model.cost_conl_custom_outer_hess = exact_cost_hess
+
+        # define residual
+        new_residual = casadi_symbol(residual_name, constr_expr.shape)
+
+        if upper_bound is not None and lower_bound is not None:
+            if upper_bound < lower_bound:
+                raise ValueError("Upper bound must be greater than lower bound.")
+            # normalize constraint to [-1, 1]
+            width = upper_bound - lower_bound
+            center = lower_bound + 0.5 * width
+            constr_expr = 2 * (constr_expr - center) / width
+
+            # define penalty
+            penalty, penalty_grad, penalty_hess, penalty_hess_xgn = \
+                symmetric_huber_penalty(new_residual, delta=huber_delta, w=weight*width**2, min_hess=min_hess)
+        elif upper_bound is not None:
+            # define penalty
+            constr_expr -= upper_bound
+            penalty, penalty_grad, penalty_hess, penalty_hess_xgn = \
+                one_sided_huber_penalty(new_residual, delta=huber_delta, w=weight, min_hess=min_hess)
+        elif lower_bound is not None:
+            raise NotImplementedError("lower bound only not implemented, please change sign on constraint and use upper bound.")
+
+        # add penalty to cost
+        self.model.cost_r_in_psi_expr = ca.vertcat(self.model.cost_r_in_psi_expr, new_residual)
+        self.model.cost_psi_expr += penalty
+        self.model.cost_y_expr = ca.vertcat(self.model.cost_y_expr, constr_expr)
+        self.cost.yref = np.concatenate((self.cost.yref, np.zeros(1)))
+
+        # add Hessian term
+        if use_xgn:
+            zero_offdiag = casadi_zeros(self.model.cost_conl_custom_outer_hess.shape[0], penalty_hess_xgn.shape[1])
+            self.model.cost_conl_custom_outer_hess = ca.blockcat(self.model.cost_conl_custom_outer_hess,
+                                                                zero_offdiag, zero_offdiag.T, penalty_hess_xgn)
+        elif self.model.cost_conl_custom_outer_hess is not None:
+            zero_offdiag = casadi_zeros(self.model.cost_conl_custom_outer_hess.shape[0], penalty_hess_xgn.shape[1])
+            # add penalty Hessian to existing Hessian
+            self.model.cost_conl_custom_outer_hess = ca.blockcat(self.model.cost_conl_custom_outer_hess,
+                                                                zero_offdiag, zero_offdiag.T, penalty_hess)
+
+        return
+
+
+    def add_linear_constraint(self, C: np.ndarray, D: np.ndarray, lg: np.ndarray, ug: np.ndarray) -> None:
+        """
+        Add a linear constraint of the form lg <= C * x + D * u <= ug to the OCP.
+        """
+
+        if C.shape[0] != lg.shape[0] or C.shape[0] != ug.shape[0]:
+            raise ValueError("C, lg, ug must have the same number of rows.")
+
+        if D.shape[0] != C.shape[0]:
+            raise ValueError("C and D must have the same number of rows.")
+
+        if self.constraints.C.shape[0] == 0:
+            # no linear constraints have been added yet
+            self.constraints.C = C
+            self.constraints.D = D
+            self.constraints.lg = lg
+            self.constraints.ug = ug
+        else:
+            self.constraints.C = ca.vertcat(self.constraints.C, C)
+            self.constraints.D = ca.vertcat(self.constraints.D, D)
+            self.constraints.lg = ca.vertcat(self.constraints.lg, lg)
+            self.constraints.ug = ca.vertcat(self.constraints.ug, ug)
+
+        return
+
+    def translate_to_feasibility_problem(self,
+                                        keep_x0: bool=False,
+                                        keep_cost: bool=False,
+                                        parametric_x0: bool=False) -> None:
+        """
+        Translate an OCP to a feasibility problem by removing all cost term and then formulating all constraints as L2 penalties.
+
+        Note: all weights are set to 1.0 for now.
+        Options to specify weights should be implemented later for advanced use cases.
+
+        :param keep_x0: if True, x0 constraint is kept as a constraint
+        :param keep_cost: if True, cost is not removed before formulating constraints as penalties
+        :param parametric_x0: if True, replace the value of the initial state constraint with a parameter that is appended to the model parameters.
+        """
+
+        self.model.make_consistent(self.dims) # sets the correct MX/SX defaults
+        model = self.model
+        cost = self.cost
+        constraints = self.constraints
+        new_constraints = AcadosOcpConstraints()
+
+        if keep_cost:
+            # initial stage - if not set, copy fields from path constraints
+            if cost.cost_type_0 is None:
+                self.copy_path_cost_to_stage_0()
+        else:
+            # set cost to zero
+            cost.cost_type = "NONLINEAR_LS"
+            cost.cost_type_e = "NONLINEAR_LS"
+            cost.cost_type_0 = "NONLINEAR_LS"
+
+            cost.yref = np.array([])
+            cost.yref_0 = np.array([])
+            cost.yref_e = np.array([])
+
+            zeros = model.get_casadi_zeros()
+            model.cost_y_expr = zeros((0, 0))
+            model.cost_y_expr_e = zeros((0, 0))
+            model.cost_y_expr_0 = zeros((0, 0))
+
+            cost.W = np.zeros((0, 0))
+            cost.W_e = np.zeros((0, 0))
+            cost.W_0 = np.zeros((0, 0))
+
+        expr_bound_list = [
+            (model.x[constraints.idxbx], constraints.lbx, constraints.ubx),
+            (model.u[constraints.idxbu], constraints.lbu, constraints.ubu),
+            (model.con_h_expr, constraints.lh, constraints.uh),
+        ]
+
+        if casadi_length(model.con_phi_expr) > 0:
+            phi_o_r_expr = ca.substitute(model.con_phi_expr, model.con_r_in_phi, model.con_r_expr)
+            expr_bound_list.append((phi_o_r_expr, constraints.lphi, constraints.uphi))
+            # NOTE: for now, we don't exploit convex over nonlinear structure of phi
+
+        for constr_expr, lower_bound, upper_bound in expr_bound_list:
+            for i in range(casadi_length(constr_expr)):
+                self.formulate_constraint_as_L2_penalty(constr_expr[i], weight=1.0, upper_bound=upper_bound[i], lower_bound=lower_bound[i])
+
+        model.con_h_expr = None
+        model.con_phi_expr = None
+        model.con_r_expr = None
+        model.con_r_in_phi = None
+
+        # formulate **terminal** constraints as L2 penalties
+        expr_bound_list_e = [
+            (model.x[constraints.idxbx_e], constraints.lbx_e, constraints.ubx_e),
+            (model.con_h_expr_e, constraints.lh_e, constraints.uh_e),
+        ]
+
+        if casadi_length(model.con_phi_expr_e) > 0:
+            phi_o_r_expr_e = ca.substitute(model.con_phi_expr_e, model.con_r_in_phi_e, model.con_r_expr_e)
+            expr_bound_list_e.append((phi_o_r_expr_e, constraints.lphi_e, constraints.uphi_e))
+            # NOTE: for now, we don't exploit convex over nonlinear structure of phi
+
+        for constr_expr, lower_bound, upper_bound in expr_bound_list_e:
+            for i in range(casadi_length(constr_expr)):
+                self.formulate_constraint_as_L2_penalty(constr_expr[i], weight=1.0, upper_bound=upper_bound[i], lower_bound=lower_bound[i], constraint_type="terminal")
+
+        model.con_h_expr_e = None
+        model.con_phi_expr_e = None
+        model.con_r_expr_e = None
+        model.con_r_in_phi_e = None
+
+        # Convert initial conditions to l2 penalty
+        # Expressions for control constraints on u
+        expr_bound_list_0 = [
+            (model.u[constraints.idxbu], constraints.lbu, constraints.ubu),
+            (model.con_h_expr_0, constraints.lh_0, constraints.uh_0),
+        ]
+
+        # initial state constraint
+        if (keep_x0 or parametric_x0) and not constraints.has_x0:
+            raise NotImplementedError("translate_to_feasibility_problem: options keep_x0, parametric_x0 not defined for problems without x0 constraints.")
+        if parametric_x0 and keep_x0:
+            raise NotImplementedError("translate_to_feasibility_problem: parametric_x0 and keep cannot both be True.")
+        if keep_x0:
+            new_constraints.x0 = constraints.lbx_0
+        elif parametric_x0:
+            symbol = model.get_casadi_symbol()
+            param_x0 = symbol('param_x0', len(constraints.idxbx_0))
+            new_params = constraints.lbx_0
+            model.p = ca.vertcat(model.p, param_x0)
+            self.parameter_values = np.concatenate((self.parameter_values, new_params))
+            expr_bound_list_0.append((model.x[constraints.idxbx_0], param_x0, param_x0))
+        else:
+            expr_bound_list_0.append((model.x[constraints.idxbx_0], constraints.lbx_0, constraints.ubx_0))
+
+        if casadi_length(model.con_phi_expr_0) > 0:
+            phi_o_r_expr_0 = ca.substitute(model.con_phi_expr_0, model.con_r_in_phi_0, model.con_r_expr_0)
+            expr_bound_list_0.append((phi_o_r_expr_0, constraints.lphi_0, constraints.uphi_0))
+            # NOTE: for now, we don't exploit convex over nonlinear structure of phi
+
+        for constr_expr, lower_bound, upper_bound in expr_bound_list_0:
+            for i in range(casadi_length(constr_expr)):
+                self.formulate_constraint_as_L2_penalty(constr_expr[i], weight=1.0, upper_bound=upper_bound[i], lower_bound=lower_bound[i], constraint_type="initial")
+
+        model.con_h_expr_0 = None
+        model.con_phi_expr_0 = None
+        model.con_r_expr_0 = None
+        model.con_r_in_phi_0 = None
+
+        # delete constraint fromulation from constraints object
+        self.constraints = new_constraints
+
+    def augment_with_t0_param(self) -> None:
+        """Add a parameter t0 to the model and set it to 0.0."""
+        # TODO only needed in benchmark for problems with time-varying references.
+        # maybe remove this function and model.t0 from acados (and move to benchmark)
+        if self.model.t0 is not None:
+            raise Exception("Parameter t0 is already present in the model.")
+        self.model.t0 = ca.SX.sym("t0")
+        self.model.p = ca.vertcat(self.model.p, self.model.t0)
+        self.parameter_values = np.append(self.parameter_values, [0.0])
+        self.p_global_values = np.append(self.p_global_values, [0.0])
         return

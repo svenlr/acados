@@ -1,8 +1,5 @@
 #
-# Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-# Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-# Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-# Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+# Copyright (c) The acados authors.
 #
 # This file is part of acados.
 #
@@ -86,7 +83,7 @@ def solve_armijo_problem_with_setting(setting):
     # discretization
     Tf = 1
     N = 1
-    ocp.dims.N = N
+    ocp.solver_options.N_horizon = N
     ocp.solver_options.tf = Tf
 
     # cost
@@ -106,11 +103,13 @@ def solve_armijo_problem_with_setting(setting):
     ocp.solver_options.print_level = 0
     ocp.solver_options.tol = TOL
     ocp.solver_options.nlp_solver_type = 'SQP' # SQP_RTI, SQP
+
     ocp.solver_options.globalization = globalization
-    ocp.solver_options.alpha_reduction = 0.9
-    ocp.solver_options.line_search_use_sufficient_descent = line_search_use_sufficient_descent
+    ocp.solver_options.globalization_alpha_reduction = 0.9
+    ocp.solver_options.globalization_line_search_use_sufficient_descent = line_search_use_sufficient_descent
     ocp.solver_options.globalization_use_SOC = globalization_use_SOC
-    ocp.solver_options.eps_sufficient_descent = 5e-1
+    ocp.solver_options.globalization_eps_sufficient_descent = 5e-1
+
     SQP_max_iter = 200
     ocp.solver_options.qp_solver_iter_max = 400
     ocp.solver_options.nlp_solver_max_iter = SQP_max_iter
@@ -125,7 +124,7 @@ def solve_armijo_problem_with_setting(setting):
     # get stats
     status = ocp_solver.solve()
     ocp_solver.print_statistics()
-    iter = ocp_solver.get_stats('sqp_iter')[0]
+    iter = ocp_solver.get_stats('sqp_iter')
     alphas = ocp_solver.get_stats('alpha')[1:]
     qp_iters = ocp_solver.get_stats('qp_iter')
     print(f"acados ocp solver returned status {status}")

@@ -1,8 +1,5 @@
 #
-# Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-# Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-# Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-# Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+# Copyright (c) The acados authors.
 #
 # This file is part of acados.
 #
@@ -57,6 +54,10 @@ if(NOT ACADOS_WITH_QPOASES)
     list(REMOVE_ITEM ACADOS_SRC "${PROJECT_SOURCE_DIR}/acados/dense_qp/dense_qp_qpoases.c")
 endif()
 
+if(NOT ACADOS_WITH_DAQP)
+    list(REMOVE_ITEM ACADOS_SRC "${PROJECT_SOURCE_DIR}/acados/dense_qp/dense_qp_daqp.c")
+endif()
+
 if(NOT ACADOS_WITH_QPDUNES)
     list(REMOVE_ITEM ACADOS_SRC "${PROJECT_SOURCE_DIR}/acados/ocp_qp/ocp_qp_qpdunes.c")
 endif()
@@ -68,18 +69,11 @@ endif()
 # Define acados library
 add_library(acados ${ACADOS_SRC})
 
-target_include_directories(acados
-    PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}> # to be able to include "acados/header.h"
-        $<BUILD_INTERFACE:${EXTERNAL_SRC_DIR}/qore/QPSOLVER_DENSE/include>
-        $<BUILD_INTERFACE:${EXTERNAL_SRC_DIR}/qore/QPSOLVER_DENSE/source>
-        $<BUILD_INTERFACE:${EXTERNAL_SRC_DIR}/qore/KKTPACK_DENSE/include>
-        $<BUILD_INTERFACE:${EXTERNAL_SRC_DIR}/qore/KKTPACK_DENSE/source>
-        $<BUILD_INTERFACE:${EXTERNAL_SRC_DIR}/qore/QPCORE/include>
-        $<BUILD_INTERFACE:${EXTERNAL_SRC_DIR}/qore>
+target_include_directories(acados PUBLIC
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}> # to be able to include "acados/header.h"
         $<BUILD_INTERFACE:${EXTERNAL_SRC_DIR}/hpipm/include>
         $<BUILD_INTERFACE:${EXTERNAL_SRC_DIR}>
-        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/interfaces>
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/interfaces>
         $<INSTALL_INTERFACE:include>)
 
 # OPENMP
@@ -100,6 +94,15 @@ if(ACADOS_WITH_QORE)
     target_link_libraries(acados PUBLIC qore)
 
     target_compile_definitions(acados PUBLIC ACADOS_WITH_QORE)
+
+    target_include_directories(acados PUBLIC
+        $<BUILD_INTERFACE:${EXTERNAL_SRC_DIR}/qore/QPSOLVER_DENSE/include>
+        $<BUILD_INTERFACE:${EXTERNAL_SRC_DIR}/qore/QPSOLVER_DENSE/source>
+        $<BUILD_INTERFACE:${EXTERNAL_SRC_DIR}/qore/KKTPACK_DENSE/include>
+        $<BUILD_INTERFACE:${EXTERNAL_SRC_DIR}/qore/KKTPACK_DENSE/source>
+        $<BUILD_INTERFACE:${EXTERNAL_SRC_DIR}/qore/QPCORE/include>
+        $<BUILD_INTERFACE:${EXTERNAL_SRC_DIR}/qore>
+    )
 endif()
 
 if(ACADOS_WITH_QPOASES)
@@ -107,6 +110,12 @@ if(ACADOS_WITH_QPOASES)
 
     target_compile_definitions(acados PUBLIC ACADOS_WITH_QPOASES)
     target_compile_definitions(acados PUBLIC USE_ACADOS_TYPES)
+endif()
+
+if(ACADOS_WITH_DAQP)
+    target_link_libraries(acados PUBLIC daqp)
+
+    target_compile_definitions(acados PUBLIC ACADOS_WITH_DAQP)
 endif()
 
 if(ACADOS_WITH_QPDUNES)
@@ -129,15 +138,14 @@ if(ACADOS_WITH_OOQP)
     target_link_libraries(acados PUBLIC ooqp)
 endif()
 
-target_link_libraries(acados PUBLIC hpipm blasfeo m)
+if(CMAKE_C_COMPILER_ID MATCHES MSVC) # no explicit math library
+    target_link_libraries(acados PUBLIC hpipm blasfeo)
+else() # add explicit math library
+    target_link_libraries(acados PUBLIC hpipm blasfeo m)
+endif()
 
 if(CMAKE_BUILD_TYPE MATCHES Debug)
     target_compile_definitions(acados PRIVATE DEBUG)
-endif()
-
-# Enable or disable timings
-if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")
-    target_compile_definitions(acados PUBLIC MEASURE_TIMINGS)
 endif()
 
 if(EXT_DEP MATCHES OFF)
@@ -152,8 +160,6 @@ if(COVERAGE MATCHES "lcov")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -fprofile-arcs -ftest-coverage")
     target_link_libraries(acados PRIVATE --coverage)
 endif()
-
-target_compile_definitions(acados PRIVATE ALIGNMENT=64)
 
 install(TARGETS acados EXPORT acadosTargets
     LIBRARY DESTINATION lib
@@ -170,15 +176,22 @@ install(EXPORT acadosTargets DESTINATION cmake)
 configure_package_config_file(${PROJECT_SOURCE_DIR}/cmake/acadosConfig.cmake.in
                               ${CMAKE_CURRENT_BINARY_DIR}/cmake/acadosConfig.cmake
                               INSTALL_DESTINATION cmake
-                              PATH_VARS ACADOS_WITH_HPMPC 
+                              PATH_VARS ACADOS_WITH_HPMPC
                                         ACADOS_WITH_QORE
                                         ACADOS_WITH_QPOASES
+                                        ACADOS_WITH_DAQP
                                         ACADOS_WITH_QPDUNES
                                         ACADOS_WITH_OSQP
                                         ACADOS_WITH_OOQP)
 
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/cmake/acadosConfig.cmake
         DESTINATION cmake)
+
+install(
+  FILES ${PROJECT_SOURCE_DIR}/cmake/FindEigen3.cmake
+        ${PROJECT_SOURCE_DIR}/cmake/FindFortranLibs.cmake
+        ${PROJECT_SOURCE_DIR}/cmake/FindOpenBLAS.cmake
+  DESTINATION cmake)
 
 # set_target_properties(acados
 #     PROPERTIES SOVERSION ${PACKAGE_SO_VERSION})

@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -49,7 +46,6 @@
 #include "blasfeo/include/blasfeo_d_aux.h"
 #include "blasfeo/include/blasfeo_d_aux_ext_dep.h"
 #include "blasfeo/include/blasfeo_d_blas.h"
-#include "blasfeo/include/blasfeo_target.h"
 #include "blasfeo/include/blasfeo_v_aux_ext_dep.h"
 
 
@@ -97,6 +93,14 @@ void sim_lifted_irk_dims_set(void *config_, void *dims_, const char *field, cons
     else if (!strcmp(field, "nz"))
     {
         dims->nz = *value;
+    }
+    else if (!strcmp(field, "np"))
+    {
+        // np dimension not needed
+    }
+    else if (!strcmp(field, "np_global"))
+    {
+        // np_global dimension not needed
     }
     else
     {
@@ -221,13 +225,13 @@ void *sim_lifted_irk_opts_assign(void *config_, void *dims, void *raw_memory)
 
     align_char_to(8, &c_ptr);
 
-    assign_and_advance_double(ns_max * ns_max, &opts->A_mat, &c_ptr);
-    assign_and_advance_double(ns_max, &opts->b_vec, &c_ptr);
-    assign_and_advance_double(ns_max, &opts->c_vec, &c_ptr);
-
     // work
     opts->work = c_ptr;
     c_ptr += butcher_tableau_work_calculate_size(ns_max);
+
+    assign_and_advance_double(ns_max * ns_max, &opts->A_mat, &c_ptr);
+    assign_and_advance_double(ns_max, &opts->b_vec, &c_ptr);
+    assign_and_advance_double(ns_max, &opts->c_vec, &c_ptr);
 
     assert((char *) raw_memory + sim_lifted_irk_opts_calculate_size(config_, dims) >= c_ptr);
 
@@ -411,6 +415,8 @@ void *sim_lifted_irk_memory_assign(void *config, void *dims_, void *opts_, void 
     assign_and_advance_blasfeo_dvec_mem(nu, memory->u, &c_ptr);
     blasfeo_dvecse(nu, 0.0, memory->u, 0);
 
+    // memory->init_K = 0;
+
     // TODO(andrea): need to move this to options.
     memory->update_sens = 1;
 
@@ -429,6 +435,33 @@ int sim_lifted_irk_memory_set(void *config_, void *dims_, void *mem_, const char
 
     printf("sim_lifted_irk_memory_set field %s is not supported! \n", field);
     exit(1);
+
+    // sim_config *config = config_;
+    // sim_lifted_irk_memory *mem = (sim_lifted_irk_memory *) mem_;
+    // if (!strcmp(field, "xdot_guess"))
+    // {
+    //     int nx;
+    //     config->dims_get(config_, dims_, "nx", &nx);
+    //     double *xdot = value;
+    //     blasfeo_pack_dvec(nx, xdot, 0, &mem->K[0], 0);
+    //     mem->init_K = 1;
+    // }
+    // else if (!strcmp(field, "guesses_blasfeo"))
+    // {
+    //     int nx, nz;
+    //     config->dims_get(config_, dims_, "nx", &nx);
+    //     config->dims_get(config_, dims_, "nz", &nz);
+
+    //     struct blasfeo_dvec *sim_guess = (struct blasfeo_dvec *) value;
+    //     blasfeo_dveccp(nx+nz, sim_guess, 0, &mem->K[0], 0);
+    //     mem->init_K = 1;
+    // }
+    // else
+    // {
+    //     printf("sim_lifted_irk_memory_set field %s is not supported! \n", field);
+    //     exit(1);
+    // }
+    // return ACADOS_SUCCESS;
 }
 
 
@@ -467,24 +500,24 @@ void sim_lifted_irk_memory_get(void *config_, void *dims_, void *mem_, const cha
 
     if (!strcmp(field, "time_sim"))
     {
-		double *ptr = value;
-		*ptr = mem->time_sim;
-	}
+        double *ptr = value;
+        *ptr = mem->time_sim;
+    }
     else if (!strcmp(field, "time_sim_ad"))
     {
-		double *ptr = value;
-		*ptr = mem->time_ad;
-	}
+        double *ptr = value;
+        *ptr = mem->time_ad;
+    }
     else if (!strcmp(field, "time_sim_la"))
     {
-		double *ptr = value;
-		*ptr = mem->time_la;
-	}
-	else
-	{
-		printf("sim_lifted_irk_memory_get field %s is not supported! \n", field);
-		exit(1);
-	}
+        double *ptr = value;
+        *ptr = mem->time_la;
+    }
+    else
+    {
+        printf("sim_lifted_irk_memory_get field %s is not supported! \n", field);
+        exit(1);
+    }
 }
 
 
@@ -592,6 +625,30 @@ static void *sim_lifted_irk_cast_workspace(void *config_, void *dims_, void *opt
 }
 
 
+size_t sim_lifted_irk_get_external_fun_workspace_requirement(void *config_, void *dims_, void *opts_, void *model_)
+{
+    lifted_irk_model *model = model_;
+
+    size_t size = 0;
+    size_t tmp_size;
+
+    tmp_size = external_function_get_workspace_requirement_if_defined(model->impl_ode_fun);
+    size = size > tmp_size ? size : tmp_size;
+    tmp_size = external_function_get_workspace_requirement_if_defined(model->impl_ode_fun_jac_x_xdot_u);
+    size = size > tmp_size ? size : tmp_size;
+
+    return size;
+}
+
+
+void sim_lifted_irk_set_external_fun_workspaces(void *config_, void *dims_, void *opts_, void *model_, void *workspace_)
+{
+    lifted_irk_model *model = model_;
+
+    external_function_set_fun_workspace_if_defined(model->impl_ode_fun, workspace_);
+    external_function_set_fun_workspace_if_defined(model->impl_ode_fun_jac_x_xdot_u, workspace_);
+}
+
 
 int sim_lifted_irk_precompute(void *config_, sim_in *in, sim_out *out, void *opts_, void *mem_,
                        void *work_)
@@ -608,6 +665,9 @@ int sim_lifted_irk_precompute(void *config_, sim_in *in, sim_out *out, void *opt
 int sim_lifted_irk(void *config_, sim_in *in, sim_out *out, void *opts_, void *mem_,
                        void *work_)
 {
+    acados_timer timer, timer_ad, timer_la;
+    acados_tic(&timer);
+
     // typecasting
     sim_config *config = config_;
     sim_opts *opts = opts_;
@@ -690,25 +750,44 @@ int sim_lifted_irk(void *config_, sim_in *in, sim_out *out, void *opts_, void *m
 
     struct blasfeo_dvec_args ext_fun_in_K;
 
-    ext_fun_arg_t ext_fun_type_in[3];
-    void *ext_fun_in[3];
+    ext_fun_arg_t ext_fun_type_in[4];
+    void *ext_fun_in[4];
+    // TODO: fix this for z
+    ext_fun_type_in[3] = COLMAJ;
+    ext_fun_in[3] = u;
+
 
     struct blasfeo_dvec_args ext_fun_out_rG;
     ext_fun_arg_t ext_fun_type_out[5];
     void *ext_fun_out[5];
 
     lifted_irk_model *model = in->model;
-
-    acados_timer timer, timer_ad, timer_la;
-    double timing_ad = 0.0;
     out->info->LAtime = 0.0;
+    double timing_ad = 0.0;
 
+    if (opts->sens_hess)
+    {
+        printf("LIFTED_IRK with HESSIAN PROPAGATION - NOT IMPLEMENTED YET - EXITING.");
+        exit(1);
+    }
     if (opts->sens_adj)
     {
         printf("LIFTED_IRK with ADJOINT SENSITIVITIES - NOT IMPLEMENTED YET - EXITING.");
         exit(1);
     }
 
+    // if (mem->init_K)
+    // {
+    //     for (ss = 0; ss < num_steps; ss++)
+    //     {
+    //         for (ii = 0; ii < ns; ii++)
+    //         {
+    //             if (!(ii == 0 && ss == 0))
+    //                 blasfeo_dveccp(nx, &mem->K[0], 0, &mem->K[ss], ii*nx);
+    //         }
+    //     }
+    //     mem->init_K = 0;
+    // }
 
     blasfeo_dgese(nx, nx, 0.0, J_temp_x, 0, 0);
     blasfeo_dgese(nx, nx, 0.0, J_temp_xdot, 0, 0);
@@ -716,7 +795,6 @@ int sim_lifted_irk(void *config_, sim_in *in, sim_out *out, void *opts_, void *m
 
     blasfeo_dvecse(nx * ns, 0.0, rG, 0);
 
-    // TODO(dimitris): shouldn't this be NF instead of nx+nu??
     if (update_sens) blasfeo_pack_dmat(nx, nx + nu, S_forw_in, nx, S_forw, 0, 0);
 
     blasfeo_dvecse(nx * ns, 0.0, rG, 0);
@@ -726,7 +804,6 @@ int sim_lifted_irk(void *config_, sim_in *in, sim_out *out, void *opts_, void *m
 
 
     // start the loop
-    acados_tic(&timer);
     for (ss = 0; ss < num_steps; ss++)
     {
         // initialize
@@ -911,9 +988,9 @@ int sim_lifted_irk(void *config_, sim_in *in, sim_out *out, void *opts_, void *m
     out->info->CPUtime = acados_toc(&timer);
     out->info->ADtime = timing_ad;
 
-	mem->time_sim = out->info->CPUtime;
-	mem->time_ad = out->info->ADtime;
-	mem->time_la = out->info->LAtime;
+    mem->time_sim = out->info->CPUtime;
+    mem->time_ad = out->info->ADtime;
+    mem->time_la = out->info->LAtime;
 
     return 0;
 }
@@ -938,6 +1015,8 @@ void sim_lifted_irk_config_initialize_default(void *config_)
     config->memory_set_to_zero = &sim_lifted_irk_memory_set_to_zero;
     config->memory_get = &sim_lifted_irk_memory_get;
     config->workspace_calculate_size = &sim_lifted_irk_workspace_calculate_size;
+    config->get_external_fun_workspace_requirement = &sim_lifted_irk_get_external_fun_workspace_requirement;
+    config->set_external_fun_workspaces = &sim_lifted_irk_set_external_fun_workspaces;
     config->model_calculate_size = &sim_lifted_irk_model_calculate_size;
     config->model_assign = &sim_lifted_irk_model_assign;
     config->model_set = &sim_lifted_irk_model_set;

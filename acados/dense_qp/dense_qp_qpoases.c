@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -89,6 +86,8 @@ acados_size_t dense_qp_qpoases_opts_calculate_size(void *config_, dense_qp_dims 
     acados_size_t size = 0;
     size += sizeof(dense_qp_qpoases_opts);
 
+    make_int_multiple_of(8, &size);
+
     return size;
 }
 
@@ -103,7 +102,7 @@ void *dense_qp_qpoases_opts_assign(void *config_, dense_qp_dims *dims, void *raw
     opts = (dense_qp_qpoases_opts *) c_ptr;
     c_ptr += sizeof(dense_qp_qpoases_opts);
 
-    assert((char *) raw_memory + dense_qp_qpoases_opts_calculate_size(config_, dims) == c_ptr);
+    assert((char *) raw_memory + dense_qp_qpoases_opts_calculate_size(config_, dims) >= c_ptr);
 
     return (void *) opts;
 }
@@ -384,7 +383,7 @@ void dense_qp_qpoases_memory_get(void *config_, void *mem_, const char *field, v
 
 
 /************************************************
- * workspcae
+ * workspace
  ************************************************/
 
 acados_size_t dense_qp_qpoases_workspace_calculate_size(void *config_, dense_qp_dims *dims, void *opts_)
@@ -681,7 +680,7 @@ int dense_qp_qpoases(void *config_, dense_qp_in *qp_in, dense_qp_out *qp_out, vo
     acados_tic(&interface_timer);
     // copy prim_sol and dual_sol to qp_out
     blasfeo_pack_dvec(nv2, prim_sol, 1, qp_out->v, 0);
-    for (int ii = 0; ii < 2 * nb + 2 * ng + 2 * ns; ii++) qp_out->lam->pa[ii] = 0.0;
+    blasfeo_dvecse(2 * nb + 2 * ng + 2 * ns, 0.0, qp_out->lam, 0);
     for (int ii = 0; ii < nb; ii++)
     {
         if (dual_sol[idxb[ii]] >= 0.0)
@@ -765,6 +764,33 @@ void dense_qp_qpoases_eval_sens(void *config_, void *qp_in, void *qp_out, void *
 }
 
 
+// void dense_qp_qpoases_memory_reset(void *config_, dense_qp_in *qp_in, dense_qp_out *qp_out, void *opts_,
+//                      void *memory_, void *work_)
+// {
+//     printf("\nerror: dense_qp_qpoases_memory_reset: not implemented yet\n");
+//     // exit(1);
+// }
+
+
+
+void dense_qp_qpoases_memory_reset(void *config, void *qp_in, void *qp_out, void *opts, void *mem, void *work)
+{
+    printf("\nerror: dense_qp_qpoases_memory_reset: not implemented yet\n");
+    exit(1);
+}
+
+void dense_qp_qpoases_solver_get(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *mem_, const char *field, int stage, void* value, int size1, int size2)
+{
+    printf("\nerror: dense_qp_qpoases_solver_get: not implemented yet\n");
+    exit(1);
+}
+
+
+
+void dense_qp_qpoases_terminate(void *config_, void *mem_, void *work_)
+{
+    return;
+}
 
 void dense_qp_qpoases_config_initialize_default(void *config_)
 {
@@ -784,7 +810,11 @@ void dense_qp_qpoases_config_initialize_default(void *config_)
     config->workspace_calculate_size =
         (acados_size_t (*)(void *, void *, void *)) & dense_qp_qpoases_workspace_calculate_size;
     config->eval_sens = &dense_qp_qpoases_eval_sens;
+    // config->memory_reset = &dense_qp_qpoases_memory_reset;
     config->evaluate = (int (*)(void *, void *, void *, void *, void *, void *)) & dense_qp_qpoases;
+    config->memory_reset = &dense_qp_qpoases_memory_reset;
+    config->solver_get = &dense_qp_qpoases_solver_get;
+    config->terminate = &dense_qp_qpoases_terminate;
 
     return;
 }

@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -118,7 +115,14 @@ int dense_qp_qpoases(void *config, dense_qp_in *qp_in, dense_qp_out *qp_out, voi
 //
 void dense_qp_qpoases_eval_sens(void *config_, void *qp_in, void *qp_out, void *opts_, void *mem_, void *work_);
 //
+void dense_qp_qpoases_memory_reset(void *config_, void *qp_in, void *qp_out, void *opts_, void *mem_, void *work_);
+//
 void dense_qp_qpoases_config_initialize_default(void *config_);
+//
+void dense_qp_qpoases_memory_reset(void *config, void *qp_in, void *qp_out, void *opts, void *mem, void *work);
+//
+void dense_qp_qpoases_solver_get(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *mem_, const char *field, int stage, void* value, int size1, int size2);
+
 
 #ifdef __cplusplus
 } /* extern "C" */

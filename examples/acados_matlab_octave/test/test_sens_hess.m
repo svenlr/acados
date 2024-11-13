@@ -1,8 +1,5 @@
 %
-% Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-% Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-% Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-% Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+% Copyright (c) The acados authors.
 %
 % This file is part of acados.
 %
@@ -29,6 +26,7 @@
 % CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 % ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 % POSSIBILITY OF SUCH DAMAGE.;
+
 %
 
 %% test of native matlab interface
@@ -39,7 +37,6 @@ addpath('../pendulum_on_cart_model/');
 for integrator = {'erk', 'irk'} %, 'irk_gnsf'}
 	%% arguments
 	compile_interface = 'auto';
-	codgen_model = 'true';
 	method = integrator{1}; %'irk'; 'irk_gnsf'; 'erk';
 	sens_forw = 'true';
 	sens_adj = 'true';
@@ -53,7 +50,7 @@ for integrator = {'erk', 'irk'} %, 'irk_gnsf'}
 	FD_epsilon = 1e-6;
 
 	%% model
-	model = pendulum_on_cart_model;
+	model = pendulum_on_cart_model();
 
 	model_name = ['pendulum_' method];
 	nx = model.nx;
@@ -74,10 +71,10 @@ for integrator = {'erk', 'irk'} %, 'irk_gnsf'}
 
     if (strcmp(method, 'erk'))
         sim_model.set('dyn_type', 'explicit');
-        sim_model.set('dyn_expr_f', model.expr_f_expl);
+        sim_model.set('dyn_expr_f', model.dyn_expr_f_expl);
     else % irk irk_gnsf
         sim_model.set('dyn_type', 'implicit');
-        sim_model.set('dyn_expr_f', model.expr_f_impl);
+        sim_model.set('dyn_expr_f', model.dyn_expr_f_impl);
         sim_model.set('sym_xdot', model.sym_xdot);
     %	if isfield(model, 'sym_z')
     %		sim_model.set('sym_z', model.sym_z);
@@ -88,18 +85,16 @@ for integrator = {'erk', 'irk'} %, 'irk_gnsf'}
 	%% acados sim opts
 	sim_opts = acados_sim_opts();
 	sim_opts.set('compile_interface', compile_interface);
-	sim_opts.set('codgen_model', codgen_model);
 	sim_opts.set('num_stages', num_stages);
 	sim_opts.set('num_steps', num_steps);
 	sim_opts.set('method', method);
 	sim_opts.set('sens_forw', sens_forw);
 	sim_opts.set('sens_adj', sens_adj);
 	sim_opts.set('sens_hess', sens_hess);
-	%sim_opts.opts_struct
 
 	%% acados sim
 	% create sim
-	sim = acados_sim(sim_model, sim_opts);
+	sim_solver = acados_sim(sim_model, sim_opts);
 
 	% compute hessian sensitivities using internal numerical differentiation
 	S_hess_ind = zeros(nx+nu, nx+nu, nx);
@@ -109,34 +104,34 @@ for integrator = {'erk', 'irk'} %, 'irk_gnsf'}
 
 	for jj=1:nx % loop over unit seeds
 		% set initial state
-		sim.set('x', x0);
-		sim.set('u', u);
+		sim_solver.set('x', x0);
+		sim_solver.set('u', u);
 
 		% internal numerical differentiation seed
 		lambda = zeros(nx, 1);
 		lambda(jj) = 1.0;
-		sim.set('seed_adj', lambda);
+		sim_solver.set('seed_adj', lambda);
 
 		% solve
-		sim.solve();
+		sim_solver.solve();
 
 		% S_hess
-		S_hess = sim.get('S_hess');
+		S_hess = sim_solver.get('S_hess');
 		S_hess_ind(:, :, jj) = S_hess;
 
 		% S_adj
-		S_adj = sim.get('S_adj');
+		S_adj = sim_solver.get('S_adj');
 
 		%% asymmetric finite differences
 		for ii=1:nx
 			dx = zeros(nx, 1);
 			dx(ii) = 1.0;
 
-			sim.set('x', x0+FD_epsilon*dx);
-			sim.set('u', u);
+			sim_solver.set('x', x0+FD_epsilon*dx);
+			sim_solver.set('u', u);
 
-			sim.solve();
-			S_adj_tmp = sim.get('S_adj');
+			sim_solver.solve();
+			S_adj_tmp = sim_solver.get('S_adj');
 			S_hess_fd(:, ii, jj) = (S_adj_tmp - S_adj) / FD_epsilon;
 		
 		end
@@ -145,11 +140,11 @@ for integrator = {'erk', 'irk'} %, 'irk_gnsf'}
 			du = zeros(nu, 1);
 			du(ii) = 1.0;
 
-			sim.set('x', x0);
-			sim.set('u', u+FD_epsilon*du);
+			sim_solver.set('x', x0);
+			sim_solver.set('u', u+FD_epsilon*du);
 
-			sim.solve();
-			S_adj_tmp = sim.get('S_adj');
+			sim_solver.solve();
+			S_adj_tmp = sim_solver.get('S_adj');
 			S_hess_fd(:, nx+ii, jj) = (S_adj_tmp - S_adj) / FD_epsilon;
         end
 	end

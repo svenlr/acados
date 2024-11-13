@@ -1,9 +1,6 @@
 #! /usr/bin/bash
 #
-# Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-# Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-# Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-# Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+# Copyright (c) The acados authors.
 #
 # This file is part of acados.
 #
@@ -73,6 +70,6 @@ echo "OCTAVE_PATH=$OCTAVE_PATH"
 # if model folder not specified assume this folder
 MODEL_FOLDER=${MODEL_FOLDER:-"./build"}
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$ACADOS_INSTALL_DIR/lib:$MODEL_FOLDER
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$ACADOS_INSTALL_DIR/interfaces/acados_template/tera_renderer/t_renderer/target/release
+export LD_RUN_PATH="$(pwd)"/c_generated_code
 echo
 echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"

@@ -1,8 +1,6 @@
+# -*- coding: future_fstrings -*-
 #
-# Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-# Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-# Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-# Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+# Copyright (c) The acados authors.
 #
 # This file is part of acados.
 #
@@ -31,15 +29,53 @@
 # POSSIBILITY OF SUCH DAMAGE.;
 #
 
-import os, sys, json
-import urllib.request
+from typing import Union
+import json
+import os
 import shutil
+import sys
+import urllib.request
+from subprocess import DEVNULL, STDOUT, call
+if os.name == 'nt':
+    from ctypes import wintypes
+    from ctypes import WinDLL as DllLoader
+else:
+    from ctypes import CDLL as DllLoader
 import numpy as np
-from casadi import SX, MX, DM, Function, CasadiMeta
+from casadi import DM, MX, SX, CasadiMeta, Function
 
-ALLOWED_CASADI_VERSIONS = ('3.5.5', '3.5.4', '3.5.3', '3.5.2', '3.5.1', '3.4.5', '3.4.0')
+ALLOWED_CASADI_VERSIONS = (
+    '3.4.0',
+    '3.4.5',
+    '3.5.1',
+    '3.5.2',
+    '3.5.3',
+    '3.5.4',
+    '3.5.6',
+    '3.5.5',
+    '3.6.0',
+    '3.6.1',
+    '3.6.2',
+    '3.6.3',
+    '3.6.4',
+    '3.6.5',
+    '3.6.6',
+)
 
 TERA_VERSION = "0.0.34"
+
+PLATFORM2TERA = {
+    "linux": "linux",
+    "darwin": "osx",
+    "win32": "windows"
+}
+
+ACADOS_INFTY = 1e10
+
+def check_if_square(mat: np.ndarray, name: str):
+    if mat.shape[0] != mat.shape[1]:
+        raise ValueError(f"Matrix {name} must be square, got shape {mat.shape}.")
+    return
 
 def get_acados_path():
     ACADOS_PATH = os.environ.get('ACADOS_SOURCE_DIR')
@@ -49,7 +85,7 @@ def get_acados_path():
         ACADOS_PATH = os.path.realpath(acados_path)
         msg = 'Warning: Did not find environment variable ACADOS_SOURCE_DIR, '
         msg += 'guessed ACADOS_PATH to be {}.\n'.format(ACADOS_PATH)
-        msg += 'Please export ACADOS_SOURCE_DIR to not avoid this warning.'
+        msg += 'Please export ACADOS_SOURCE_DIR to avoid this warning.'
         print(msg)
     return ACADOS_PATH
 
@@ -71,20 +107,54 @@ def get_tera_exec_path():
     return TERA_PATH
 
 
-platform2tera = {
-    "linux": "linux",
-    "darwin": "osx",
-    "win32": "window.exe"
-}
+def acados_lib_is_compiled_with_openmp(acados_lib: DllLoader, verbose: bool) -> bool:
+    # find out if acados was compiled with OpenMP
+    try:
+        acados_lib_uses_omp = getattr(acados_lib, 'omp_get_thread_num') is not None
+    except AttributeError as e:
+        acados_lib_uses_omp = False
+    if verbose:
+        if acados_lib_uses_omp:
+            print('acados was compiled with OpenMP.')
+        else:
+            print('acados was compiled without OpenMP.')
+    return acados_lib_uses_omp
 
 
-def casadi_version_warning(casadi_version):
-    msg =  'Warning: Please note that the following versions of CasADi  are '
-    msg += 'officially supported: {}.\n '.format(" or ".join(ALLOWED_CASADI_VERSIONS))
-    msg += 'If there is an incompatibility with the CasADi generated code, '
-    msg += 'please consider changing your CasADi version.\n'
-    msg += 'Version {} currently in use.'.format(casadi_version)
-    print(msg)
+def get_shared_lib(shared_lib_name: str, winmode = None) -> DllLoader:
+    if winmode is not None:
+        shared_lib = DllLoader(shared_lib_name, winmode=winmode)
+    else:
+        # for compatibility with older python versions
+        shared_lib = DllLoader(shared_lib_name)
+    return shared_lib
+
+
+def check_casadi_version():
+    casadi_version = CasadiMeta.version()
+    if casadi_version in ALLOWED_CASADI_VERSIONS:
+        return
+    else:
+        msg =  'Warning: Please note that the following versions of CasADi are '
+        msg += 'officially supported: {}.\n '.format(" or ".join(ALLOWED_CASADI_VERSIONS))
+        msg += 'If there is an incompatibility with the CasADi generated code, '
+        msg += 'please consider changing your CasADi version.\n'
+        msg += 'Version {} currently in use.'.format(casadi_version)
+        print(msg)
+
+def check_casadi_version_supports_p_global():
+    try:
+        from casadi import extract_parametric, cse
+    except:
+        raise Exception("CasADi version does not support extract_parametric or cse functions.\nNeeds nightly-se2 release or later, see: https://github.com/casadi/casadi/releases/tag/nightly-se2")
+
+
+def get_simulink_default_opts():
+    python_interface_path = get_python_interface_path()
+    abs_path = os.path.join(python_interface_path, 'simulink_default_opts.json')
+    with open(abs_path , 'r') as f:
+        simulink_default_opts = json.load(f)
+    return simulink_default_opts
 
 
 def is_column(x):
@@ -113,58 +183,58 @@ def is_empty(x):
     if isinstance(x, (MX, SX, DM)):
         return x.is_empty()
     elif isinstance(x, np.ndarray):
-        if np.prod(x.shape) == 0:
-            return True
-        else:
-            return False
-    elif x == None or x == []:
+        return True if np.prod(x.shape) == 0 else False
+    elif x is None:
         return True
+    elif isinstance(x, (set, list)):
+        return True if len(x) == 0 else False
     else:
         raise Exception("is_empty expects one of the following types: casadi.MX, casadi.SX, "
-                        + "None, numpy array empty list. Got: " + str(type(x)))
+                        + "None, numpy array empty list, set. Got: " + str(type(x)))
 
 
 def casadi_length(x):
     if isinstance(x, (MX, SX, DM)):
         return int(np.prod(x.shape))
+    elif x is None:
+        return 0
+    elif isinstance(x, list):
+        return len(x)
     else:
         raise Exception("casadi_length expects one of the following types: casadi.MX, casadi.SX."
                         + " Got: " + str(type(x)))
 
-
-def make_model_consistent(model):
-    x = model.x
-    xdot = model.xdot
-    u = model.u
-    z = model.z
-    p = model.p
-
-    if isinstance(x, MX):
-        symbol = MX.sym
-    elif isinstance(x, SX):
-        symbol = SX.sym
+def get_shared_lib_ext():
+    if sys.platform == 'darwin':
+        return '.dylib'
+    elif os.name == 'nt':
+        return '.dll'
     else:
-        raise Exception("model.x must be casadi.SX or casadi.MX, got {}".format(type(x)))
+        return '.so'
 
-    if is_empty(p):
-        model.p = symbol('p', 0, 0)
+def get_shared_lib_dir():
+    if os.name == 'nt':
+        return 'bin'
+    else:
+        return 'lib'
 
-    if is_empty(z):
-        model.z = symbol('z', 0, 0)
+def get_shared_lib_prefix():
+    if os.name == 'nt':
+        return ''
+    else:
+        return 'lib'
 
-    return model
-
-
-def get_tera():
+def get_tera() -> str:
     tera_path = get_tera_exec_path()
     acados_path = get_acados_path()
 
+    # check if tera exists and is executable
     if os.path.exists(tera_path) and os.access(tera_path, os.X_OK):
         return tera_path
 
     repo_url = "https://github.com/acados/tera_renderer/releases"
     url = "{}/download/v{}/t_renderer-v{}-{}".format(
-        repo_url, TERA_VERSION, TERA_VERSION, platform2tera[sys.platform])
+        repo_url, TERA_VERSION, TERA_VERSION, PLATFORM2TERA[sys.platform])
 
     manual_install = 'For manual installation follow these instructions:\n'
     manual_install += '1 Download binaries from {}\n'.format(url)
@@ -183,57 +253,82 @@ def get_tera():
     msg += 'Do you wish to set up Tera renderer automatically?\n'
     msg += 'y/N? (press y to download tera or any key for manual installation)\n'
 
-    if input(msg) == 'y':
-        print("Dowloading {}".format(url))
-        with urllib.request.urlopen(url) as response, open(tera_path, 'wb') as out_file:
-            shutil.copyfileobj(response, out_file)
-        print("Successfully downloaded t_renderer.")
-        os.chmod(tera_path, 0o755)
-        return tera_path
+    if input(msg) != 'y':
+        msg_cancel = "\nYou cancelled automatic download.\n\n"
+        msg_cancel += manual_install
+        msg_cancel += "Once installed re-run your script.\n\n"
+        print(msg_cancel)
 
-    msg_cancel = "\nYou cancelled automatic download.\n\n"
-    msg_cancel += manual_install
-    msg_cancel += "Once installed re-run your script.\n\n"
-    print(msg_cancel)
+        sys.exit(1)
 
-    sys.exit(1)
+    # check if parent directory exists otherwise create it
+    tera_dir = os.path.split(tera_path)[0]
+    if not os.path.exists(tera_dir):
+        print(f"Creating directory {tera_dir}")
+        os.makedirs(tera_dir)
+
+    # Download tera
+    print(f"Dowloading {url}")
+    with urllib.request.urlopen(url) as response, open(tera_path, 'wb') as out_file:
+        shutil.copyfileobj(response, out_file)
+    print("Successfully downloaded t_renderer.")
+    # make executable
+    os.chmod(tera_path, 0o755)
+    print("Successfully made t_renderer executable.")
+    return tera_path
 
 
-def render_template(in_file, out_file, template_dir, json_path):
+def render_template(in_file, out_file, output_dir, json_path, template_glob=None):
+
+    acados_path = os.path.dirname(os.path.abspath(__file__))
+    if template_glob is None:
+        head, in_file = os.path.split(in_file)
+        template_glob = os.path.join(acados_path, 'c_templates_tera', head, '**', '*')
     cwd = os.getcwd()
-    if not os.path.exists(template_dir):
-        os.mkdir(template_dir)
-    os.chdir(template_dir)
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    os.chdir(output_dir)
 
     tera_path = get_tera()
-
-    # setting up loader and environment
-    acados_path = os.path.dirname(os.path.abspath(__file__))
-    template_glob = os.path.join(acados_path, 'c_templates_tera', '*')
 
     # call tera as system cmd
     os_cmd = f"{tera_path} '{template_glob}' '{in_file}' '{json_path}' '{out_file}'"
     # Windows cmd.exe can not cope with '...', so use "..." instead:
     if os.name == 'nt':
         os_cmd = os_cmd.replace('\'', '\"')
-    
+
     status = os.system(os_cmd)
-    if (status != 0):
-        raise Exception(f'Rendering of {in_file} failed!\n\nAttempted to execute OS command:\n{os_cmd}\n\nExiting.\n')
+    if status != 0:
+        raise Exception(f'Rendering of {in_file} failed!\n\nAttempted to execute OS command:\n{os_cmd}\n\n')
 
     os.chdir(cwd)
 
 
+def casadi_expr_to_string(expr) -> str:
+    string = ''
+    for ii in range(casadi_length(expr)):
+        string += f"{expr[ii,:]}\n"
+    return string
+
 ## Conversion functions
-def np_array_to_list(np_array):
-    if isinstance(np_array, (np.ndarray)):
-        return np_array.tolist()
-    elif isinstance(np_array, (SX)):
-        return DM(np_array).full()
-    elif isinstance(np_array, (DM)):
-        return np_array.full()
+def make_object_json_dumpable(input):
+    if isinstance(input, (np.ndarray)):
+        return input.tolist()
+    elif isinstance(input, (SX)):
+        try:
+            return input.serialize()
+            # for more readable json output:
+            # return casadi_expr_to_string(input)
+        except: # for older CasADi versions
+            return ''
+    elif isinstance(input, (MX)):
+        # NOTE: MX expressions can not be serialized, only Functions.
+        return input.__str__()
+    elif isinstance(input, (DM)):
+        return input.full()
     else:
-        raise(Exception(f"Cannot convert to list type {type(np_array)}"))
+        raise TypeError(f"Cannot make input of type {type(input)} dumpable.")
 
 
 def format_class_dict(d):
@@ -249,83 +344,26 @@ def format_class_dict(d):
         out[k.replace(k, out_key)] = v
     return out
 
-
-def get_ocp_nlp_layout():
-    python_interface_path = get_python_interface_path()
-    abs_path = os.path.join(python_interface_path, 'acados_layout.json')
-    with open(abs_path, 'r') as f:
-        ocp_nlp_layout = json.load(f)
-    return ocp_nlp_layout
-
-
-def ocp_check_against_layout(ocp_nlp, ocp_dims):
-    """
-    Check dimensions against layout
-    Parameters
-    ---------
-    ocp_nlp : dict
-        dictionary loaded from JSON to be post-processed.
-
-    ocp_dims : instance of AcadosOcpDims
-    """
-
-    ocp_nlp_layout = get_ocp_nlp_layout()
-
-    ocp_check_against_layout_recursion(ocp_nlp, ocp_dims, ocp_nlp_layout)
-    return
-
-
-def ocp_check_against_layout_recursion(ocp_nlp, ocp_dims, layout):
-
-    for key, item in ocp_nlp.items():
-
-        try:
-            layout_of_key = layout[key]
-        except KeyError:
-            raise Exception("ocp_check_against_layout_recursion: field" \
-                            " '{0}' is not in layout but in OCP description.".format(key))
-
-        if isinstance(item, dict):
-            ocp_check_against_layout_recursion(item, ocp_dims, layout_of_key)
-
-        if 'ndarray' in layout_of_key:
-            if isinstance(item, int) or isinstance(item, float):
-                item = np.array([item])
-        if isinstance(item, (list, np.ndarray)) and (layout_of_key[0] != 'str'):
-            dim_layout = []
-            dim_names = layout_of_key[1]
-
-            for dim_name in dim_names:
-                dim_layout.append(ocp_dims[dim_name])
-
-            dims = tuple(dim_layout)
-
-            item = np.array(item)
-            item_dims = item.shape
-            if len(item_dims) != len(dims):
-                raise Exception('Mismatching dimensions for field {0}. ' \
-                    'Expected {1} dimensional array, got {2} dimensional array.' \
-                        .format(key, len(dims), len(item_dims)))
-
-            if np.prod(item_dims) != 0 or np.prod(dims) != 0:
-                if dims != item_dims:
-                    raise Exception('acados -- mismatching dimensions for field {0}. ' \
-                        'Provided data has dimensions {1}, ' \
-                        'while associated dimensions {2} are {3}' \
-                            .format(key, item_dims, dim_names, dims))
-    return
+def get_default_simulink_opts() -> dict:
+    print("get_default_simulink_opts is deprecated, use get_simulink_default_opts instead."
+          + " This function will be removed in a future release.")
+    return get_simulink_default_opts()
 
 
 def J_to_idx(J):
+    if not isinstance(J, np.ndarray):
+        raise Exception('J_to_idx: J must be a numpy array.')
+    if J.ndim != 2:
+        raise Exception('J_to_idx: J must be a 2D numpy array.')
     nrows = J.shape[0]
     idx = np.zeros((nrows, ))
     for i in range(nrows):
         this_idx = np.nonzero(J[i,:])[0]
         if len(this_idx) != 1:
             raise Exception('Invalid J matrix structure detected, ' \
-                'must contain one nonzero element per row. Exiting.')
+                'must contain exactly one nonzero element per row.')
         if this_idx.size > 0 and J[i,this_idx[0]] != 1:
-            raise Exception('J matrices can only contain 1s. Exiting.')
+            raise Exception('J matrices can only contain 1 and 0 entries.')
         idx[i] = this_idx[0]
     return idx
 
@@ -341,7 +379,7 @@ def J_to_idx_slack(J):
             idx[i_idx] = i
             i_idx = i_idx + 1
         elif len(this_idx) > 1:
-            raise Exception('J_to_idx_slack: Invalid J matrix. Exiting. ' \
+            raise Exception('J_to_idx_slack: Invalid J matrix. ' \
                 'Found more than one nonzero in row ' + str(i))
         if this_idx.size > 0 and J[i,this_idx[0]] != 1:
             raise Exception('J_to_idx_slack: J matrices can only contain 1s, ' \
@@ -349,6 +387,23 @@ def J_to_idx_slack(J):
     if not i_idx == ncol:
             raise Exception('J_to_idx_slack: J must contain a 1 in every column!')
     return idx
+
+
+def check_if_nparray_and_flatten(val, name) -> np.ndarray:
+    if not isinstance(val, np.ndarray):
+        raise Exception(f"{name} must be a numpy array, got {type(val)}")
+    return val.reshape(-1)
+
+
+def check_if_2d_nparray(val, name) -> None:
+    if not isinstance(val, np.ndarray):
+        raise Exception(f"{name} must be a numpy array, got {type(val)}")
+    if val.ndim != 2:
+        raise Exception(f"{name} must be a 2D numpy array, got shape {val.shape}")
+    return
+
+def print_J_to_idx_note():
+    print("NOTE: J* matrix is converted to zero based vector idx* vector, which is returned here.")
 
 
 def acados_dae_model_json_dump(model):
@@ -375,23 +430,13 @@ def acados_dae_model_json_dump(model):
     # dump
     json_file = model_name + '_acados_dae.json'
     with open(json_file, 'w') as f:
-        json.dump(dae_dict, f, default=np_array_to_list, indent=4, sort_keys=True)
+        json.dump(dae_dict, f, default=make_object_json_dumpable, indent=4, sort_keys=True)
     print("dumped ", model_name, " dae to file:", json_file, "\n")
 
 
-def set_up_imported_gnsf_model(acados_formulation):
+def set_up_imported_gnsf_model(acados_ocp):
 
-    gnsf = acados_formulation.gnsf_model
-
-    # check CasADi version
-    # dump_casadi_version = gnsf['casadi_version']
-    # casadi_version = CasadiMeta.version()
-
-    # if not casadi_version == dump_casadi_version:
-    #     print("WARNING: GNSF model was dumped with another CasADi version.\n"
-    #             + "This might yield errors. Please use the same version for compatibility, serialize version: "
-    #             + dump_casadi_version + " current Python CasADi verison: " + casadi_version)
-    #     input("Press any key to attempt to continue...")
+    gnsf = acados_ocp.gnsf_model
 
     # load model
     phi_fun = Function.deserialize(gnsf['phi_fun'])
@@ -401,39 +446,75 @@ def set_up_imported_gnsf_model(acados_formulation):
 
     # obtain gnsf dimensions
     size_gnsf_A = get_matrices_fun.size_out(0)
-    acados_formulation.dims.gnsf_nx1 = size_gnsf_A[1]
-    acados_formulation.dims.gnsf_nz1 = size_gnsf_A[0] - size_gnsf_A[1]
-    acados_formulation.dims.gnsf_nuhat = max(phi_fun.size_in(1))
-    acados_formulation.dims.gnsf_ny = max(phi_fun.size_in(0))
-    acados_formulation.dims.gnsf_nout = max(phi_fun.size_out(0))
+    acados_ocp.dims.gnsf_nx1 = size_gnsf_A[1]
+    acados_ocp.dims.gnsf_nz1 = size_gnsf_A[0] - size_gnsf_A[1]
+    acados_ocp.dims.gnsf_nuhat = max(phi_fun.size_in(1))
+    acados_ocp.dims.gnsf_ny = max(phi_fun.size_in(0))
+    acados_ocp.dims.gnsf_nout = max(phi_fun.size_out(0))
 
     # save gnsf functions in model
-    acados_formulation.model.phi_fun = phi_fun
-    acados_formulation.model.phi_fun_jac_y = phi_fun_jac_y
-    acados_formulation.model.phi_jac_y_uhat = phi_jac_y_uhat
-    acados_formulation.model.get_matrices_fun = get_matrices_fun
+    acados_ocp.model.phi_fun = phi_fun
+    acados_ocp.model.phi_fun_jac_y = phi_fun_jac_y
+    acados_ocp.model.phi_jac_y_uhat = phi_jac_y_uhat
+    acados_ocp.model.get_matrices_fun = get_matrices_fun
 
     # get_matrices_fun = Function([model_name,'_gnsf_get_matrices_fun'], {dummy},...
     #  {A, B, C, E, L_x, L_xdot, L_z, L_u, A_LO, c, E_LO, B_LO,...
     #   nontrivial_f_LO, purely_linear, ipiv_x, ipiv_z, c_LO});
     get_matrices_out = get_matrices_fun(0)
-    acados_formulation.model.gnsf['nontrivial_f_LO'] = int(get_matrices_out[12])
-    acados_formulation.model.gnsf['purely_linear'] = int(get_matrices_out[13])
+    acados_ocp.model.gnsf_nontrivial_f_LO = int(get_matrices_out[12])
+    acados_ocp.model.gnsf_purely_linear = int(get_matrices_out[13])
 
     if "f_lo_fun_jac_x1k1uz" in gnsf:
         f_lo_fun_jac_x1k1uz = Function.deserialize(gnsf['f_lo_fun_jac_x1k1uz'])
-        acados_formulation.model.f_lo_fun_jac_x1k1uz = f_lo_fun_jac_x1k1uz
+        acados_ocp.model.f_lo_fun_jac_x1k1uz = f_lo_fun_jac_x1k1uz
     else:
-        dummy_var_x1 = SX.sym('dummy_var_x1', acados_formulation.dims.gnsf_nx1)
-        dummy_var_x1dot = SX.sym('dummy_var_x1dot', acados_formulation.dims.gnsf_nx1)
-        dummy_var_z1 = SX.sym('dummy_var_z1', acados_formulation.dims.gnsf_nz1)
-        dummy_var_u = SX.sym('dummy_var_z1', acados_formulation.dims.nu)
-        dummy_var_p = SX.sym('dummy_var_z1', acados_formulation.dims.np)
+        dummy_var_x1 = SX.sym('dummy_var_x1', acados_ocp.dims.gnsf_nx1)
+        dummy_var_x1dot = SX.sym('dummy_var_x1dot', acados_ocp.dims.gnsf_nx1)
+        dummy_var_z1 = SX.sym('dummy_var_z1', acados_ocp.dims.gnsf_nz1)
+        dummy_var_u = SX.sym('dummy_var_z1', acados_ocp.dims.nu)
+        dummy_var_p = SX.sym('dummy_var_z1', acados_ocp.dims.np)
         empty_var = SX.sym('empty_var', 0, 0)
 
         empty_fun = Function('empty_fun', \
             [dummy_var_x1, dummy_var_x1dot, dummy_var_z1, dummy_var_u, dummy_var_p],
                 [empty_var])
-        acados_formulation.model.f_lo_fun_jac_x1k1uz = empty_fun
+        acados_ocp.model.f_lo_fun_jac_x1k1uz = empty_fun
 
-    del acados_formulation.gnsf_model
+    del acados_ocp.gnsf_model
+
+
+def idx_perm_to_ipiv(idx_perm):
+    n = len(idx_perm)
+    vec = list(range(n))
+    ipiv = np.zeros(n)
+
+    print(n, idx_perm)
+    # import pdb; pdb.set_trace()
+    for ii in range(n):
+        idx0 = idx_perm[ii]
+        for jj in range(ii,n):
+            if vec[jj]==idx0:
+                idx1 = jj
+                break
+        tmp = vec[ii]
+        vec[ii] = vec[idx1]
+        vec[idx1] = tmp
+        ipiv[ii] = idx1
+
+    ipiv = ipiv-1 # C 0-based indexing
+    return ipiv
+
+
+def print_casadi_expression(f: Union[MX, SX, DM]):
+    for ii in range(casadi_length(f)):
+        print(f[ii,:])
+
+
+def verbose_system_call(cmd, verbose=True, shell=False):
+    return call(
+        cmd,
+        stdout=None if verbose else DEVNULL,
+        stderr=None if verbose else STDOUT,
+        shell=shell
+    )

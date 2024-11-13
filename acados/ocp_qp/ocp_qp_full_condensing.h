@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -105,6 +102,10 @@ void *ocp_qp_full_condensing_memory_assign(void *dims, void *opts_, void *raw_me
 acados_size_t ocp_qp_full_condensing_workspace_calculate_size(void *dims, void *opts_);
 //
 int ocp_qp_full_condensing(void *in, void *out, void *opts, void *mem, void *work);
+//
+int ocp_qp_full_condensing_condense_rhs(void *in, void *out, void *opts, void *mem, void *work);
+//
+int ocp_qp_full_condensing_condense_lhs(void *in, void *out, void *opts, void *mem, void *work);
 //
 int ocp_qp_full_expansion(void *in, void *out, void *opts, void *mem, void *work);
 //

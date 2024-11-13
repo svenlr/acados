@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -86,6 +83,7 @@ typedef struct
     void *model;
 
     double T;  // simulation time
+    double t0; // initial time (only relevant for time dependent dynamics)
 
 } sim_in;
 
@@ -137,6 +135,8 @@ typedef struct
     bool sens_forw;
     bool sens_adj;
     bool sens_hess;
+    bool cost_computation;
+    ocp_nlp_cost_t cost_type;
 
     bool output_z;        // 1 -- if zn should be computed
     bool sens_algebraic;  // 1 -- if S_algebraic should be computed
@@ -148,6 +148,8 @@ typedef struct
     int newton_iter;
     bool jac_reuse;
     // Newton_scheme *scheme;
+
+    double newton_tol; // optinally used in implicit integrators
 
     // workspace
     void *work;
@@ -175,6 +177,9 @@ typedef struct
     void (*memory_get)(void *config, void *dims, void *mem, const char *field, void *value);
     // work
     acados_size_t (*workspace_calculate_size)(void *config, void *dims, void *opts);
+    acados_size_t (*get_external_fun_workspace_requirement)(void *config, void *dims, void *opts_, void *model_);
+    void (*set_external_fun_workspaces)(void *config, void *dims, void *opts_, void *model_, void *work_);
+
     // model
     acados_size_t (*model_calculate_size)(void *config, void *dims);
     void *(*model_assign)(void *config, void *dims, void *raw_memory);
@@ -202,6 +207,8 @@ sim_config *sim_config_assign(void *raw_memory);
 acados_size_t sim_in_calculate_size(void *config, void *dims);
 //
 sim_in *sim_in_assign(void *config, void *dims, void *raw_memory);
+//
+void sim_in_assign_and_advance(void *config, void *dims, sim_in **sim_in_p, char **c_ptr);
 //
 int sim_in_set_(void *config_, void *dims_, sim_in *in, const char *field, void *value);
 

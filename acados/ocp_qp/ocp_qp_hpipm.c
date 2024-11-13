@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -40,6 +37,10 @@
 #include "hpipm/include/hpipm_d_ocp_qp.h"
 #include "hpipm/include/hpipm_d_ocp_qp_ipm.h"
 #include "hpipm/include/hpipm_d_ocp_qp_sol.h"
+
+// uncomment to codegen QP
+// #include "hpipm/include/hpipm_d_ocp_qp_utils.h"
+
 // acados
 #include "acados/ocp_qp/ocp_qp_common.h"
 #include "acados/ocp_qp/ocp_qp_hpipm.h"
@@ -96,14 +97,8 @@ void *ocp_qp_hpipm_opts_assign(void *config_, void *dims_, void *raw_memory)
 }
 
 
-
-void ocp_qp_hpipm_opts_initialize_default(void *config_, void *dims_, void *opts_)
+static void ocp_qp_hpipm_opts_overwrite_mode_opts(ocp_qp_hpipm_opts *opts)
 {
-    // ocp_qp_dims *dims = dims_;
-    ocp_qp_hpipm_opts *opts = opts_;
-
-//    d_ocp_qp_ipm_arg_set_default(SPEED, opts->hpipm_opts);
-    d_ocp_qp_ipm_arg_set_default(BALANCE, opts->hpipm_opts);
     // overwrite some default options
     opts->hpipm_opts->res_g_max = 1e-6;
     opts->hpipm_opts->res_b_max = 1e-8;
@@ -114,6 +109,19 @@ void ocp_qp_hpipm_opts_initialize_default(void *config_, void *dims_, void *opts
     opts->hpipm_opts->alpha_min = 1e-8;
     opts->hpipm_opts->mu0 = 1e0;
     opts->hpipm_opts->var_init_scheme = 1;
+}
+
+
+void ocp_qp_hpipm_opts_initialize_default(void *config_, void *dims_, void *opts_)
+{
+    // ocp_qp_dims *dims = dims_;
+    ocp_qp_hpipm_opts *opts = opts_;
+
+//    d_ocp_qp_ipm_arg_set_default(SPEED, opts->hpipm_opts);
+    d_ocp_qp_ipm_arg_set_default(BALANCE, opts->hpipm_opts);
+
+    ocp_qp_hpipm_opts_overwrite_mode_opts(opts);
+    opts->print_level = 0;
 
     return;
 }
@@ -133,7 +141,31 @@ void ocp_qp_hpipm_opts_set(void *config_, void *opts_, const char *field, void *
 {
     ocp_qp_hpipm_opts *opts = opts_;
 
-    d_ocp_qp_ipm_arg_set((char *) field, value, opts->hpipm_opts);
+    const char *mode;
+    if (!strcmp(field, "hpipm_mode"))
+    {
+        mode = (const char *) value;
+        if (!strcmp(mode, "BALANCE"))
+            d_ocp_qp_ipm_arg_set_default(BALANCE, opts->hpipm_opts);
+        else if (!strcmp(mode, "SPEED"))
+            d_ocp_qp_ipm_arg_set_default(SPEED, opts->hpipm_opts);
+        else if (!strcmp(mode, "SPEED_ABS"))
+            d_ocp_qp_ipm_arg_set_default(SPEED_ABS, opts->hpipm_opts);
+        else if (!strcmp(mode, "ROBUST"))
+            d_ocp_qp_ipm_arg_set_default(ROBUST, opts->hpipm_opts);
+
+        ocp_qp_hpipm_opts_overwrite_mode_opts(opts);
+
+    }
+    else if (!strcmp(field, "print_level"))
+    {
+        int* print_level = (int *) value;
+        opts->print_level = *print_level;
+    }
+    else
+    {
+        d_ocp_qp_ipm_arg_set((char *) field, value, opts->hpipm_opts);
+    }
 
     return;
 }
@@ -210,6 +242,11 @@ void ocp_qp_hpipm_memory_get(void *config_, void *mem_, const char *field, void*
         int *tmp_ptr = value;
         *tmp_ptr = mem->iter;
     }
+    else if (!strcmp(field, "status"))
+    {
+        int *tmp_ptr = value;
+        *tmp_ptr = mem->status;
+    }
     else
     {
         printf("\nerror: ocp_qp_hpipm_memory_get: field %s not available\n", field);
@@ -265,9 +302,14 @@ int ocp_qp_hpipm(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *
     // solve ipm
     acados_tic(&qp_timer);
     // print_ocp_qp_in(qp_in);
-    int hpipm_status;
     d_ocp_qp_ipm_solve(qp_in, qp_out, opts->hpipm_opts, mem->hpipm_workspace);
-    d_ocp_qp_ipm_get_status(mem->hpipm_workspace, &hpipm_status);
+    d_ocp_qp_ipm_get_status(mem->hpipm_workspace, &mem->status);
+
+    /* use this to send some QPs to Gianluca :) */
+    // printf("\ncodegen HPIPM QP\n");
+    // d_ocp_qp_dim_codegen("failing_ocp_data.c", "w", qp_in->dim);
+    // d_ocp_qp_codegen("failing_ocp_data.c", "a", qp_in->dim, qp_in);
+    // d_ocp_qp_ipm_arg_codegen("failing_ocp_data.c", "a", qp_in->dim, opts->hpipm_opts);
 
     info->solve_QP_time = acados_toc(&qp_timer);
     info->interface_time = 0;  // there are no conversions for hpipm
@@ -278,15 +320,98 @@ int ocp_qp_hpipm(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *
     mem->time_qp_solver_call = info->solve_QP_time;
     mem->iter = mem->hpipm_workspace->iter;
 
+    // print HPIPM statistics:
+#ifndef BLASFEO_EXT_DEP_OFF
+    if (opts->print_level > 0)
+    {
+        double *stat; d_ocp_qp_ipm_get_stat(mem->hpipm_workspace, &stat);
+        int stat_m; d_ocp_qp_ipm_get_stat_m(mem->hpipm_workspace, &stat_m);
+        printf("\nalpha_aff\tmu_aff\t\tsigma\t\talpha_prim\talpha_dual\tmu\t\tres_stat\tres_eq\t\tres_ineq\tres_comp\tobj\t\tlq fact\t\titref pred\titref corr\tlin res stat\tlin res eq\tlin res ineq\tlin res comp\n");
+        d_print_exp_tran_mat(stat_m, mem->iter+1, stat, stat_m);
+    }
+#endif
+
     // check exit conditions
-    int acados_status = hpipm_status;
-    if (hpipm_status == 0) acados_status = ACADOS_SUCCESS;
-    if (hpipm_status == 1) acados_status = ACADOS_MAXITER;
-    if (hpipm_status == 2) acados_status = ACADOS_MINSTEP;
+    int acados_status = mem->status;
+    if (mem->status == 0) acados_status = ACADOS_SUCCESS;
+    if (mem->status == 1) acados_status = ACADOS_MAXITER;
+    if (mem->status == 2) acados_status = ACADOS_MINSTEP;
 
     return acados_status;
 }
 
+
+void ocp_qp_hpipm_memory_reset(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *mem_, void *work_)
+{
+    ocp_qp_in *qp_in = qp_in_;
+    // reset memory
+    // void *ocp_qp_hpipm_memory_assign(void *config_, void *dims_, void *opts_, void *raw_memory)
+    printf("acados: reset hpipm_mem\n");
+    ocp_qp_hpipm_memory_assign(config_, qp_in->dim, opts_, mem_);
+}
+
+void ocp_qp_hpipm_solver_get(void *config_, void *qp_in_, void *qp_out_, void *opts_, void *mem_, const char *field, int stage, void* value, int size1, int size2)
+{
+    ocp_qp_in *qp_in = qp_in_;
+    // ocp_qp_out *qp_out = qp_out_;
+    ocp_qp_hpipm_opts *opts = opts_;
+    ocp_qp_hpipm_memory *mem = mem_;
+
+    double *double_values = value;
+    int nx = qp_in->dim->nx[stage];
+    int nu = qp_in->dim->nu[stage];
+
+    if (!strcmp(field, "P"))
+    {
+        if ((size1 != nx) || (size2 != nx))
+        {
+            printf("\nocp_qp_hpipm_solver_get: size of field %s not as expected, got size %d %d.\n",
+                   field, size1, size2);
+        }
+        d_ocp_qp_ipm_get_ric_P(qp_in, opts->hpipm_opts, mem->hpipm_workspace, stage, double_values);
+    }
+    else if (!strcmp(field, "p"))
+    {
+        if ((size1 != nx) || (size2 != 1))
+        {
+            printf("\nocp_qp_hpipm_solver_get: size of field %s not as expected, got size %d %d.\n",
+                   field, size1, size2);
+        }
+        d_ocp_qp_ipm_get_ric_p(qp_in, opts->hpipm_opts, mem->hpipm_workspace, stage, double_values);
+    }
+    else if (!strcmp(field, "K"))
+    {
+        if ((size1 != nu) || (size2 != nx))
+        {
+            printf("\nocp_qp_hpipm_solver_get: size of field %s not as expected, got size %d %d.\n",
+                   field, size1, size2);
+        }
+        d_ocp_qp_ipm_get_ric_K(qp_in, opts->hpipm_opts, mem->hpipm_workspace, stage, double_values);
+    }
+    else if (!strcmp(field, "k"))
+    {
+        if ((size1 != nu) || (size2 != 1))
+        {
+            printf("\nocp_qp_hpipm_solver_get: size of field %s not as expected, got size %d %d.\n",
+                   field, size1, size2);
+        }
+        d_ocp_qp_ipm_get_ric_k(qp_in, opts->hpipm_opts, mem->hpipm_workspace, stage, double_values);
+    }
+    else if (!strcmp(field, "Lr"))
+    {
+        if ((size1 != nu) || (size2 != nu))
+        {
+            printf("\nocp_qp_hpipm_solver_get: size of field %s not as expected, got size %d %d.\n",
+                   field, size1, size2);
+        }
+        d_ocp_qp_ipm_get_ric_Lr(qp_in, opts->hpipm_opts, mem->hpipm_workspace, stage, double_values);
+    }
+    else
+    {
+        printf("\nocp_qp_hpipm_solver_get: field %s not supported", field);
+    }
+    return;
+}
 
 
 void ocp_qp_hpipm_eval_sens(void *config_, void *param_qp_in_, void *sens_qp_out_, void *opts_, void *mem_, void *work_)
@@ -317,6 +442,12 @@ void ocp_qp_hpipm_eval_sens(void *config_, void *param_qp_in_, void *sens_qp_out
 }
 
 
+void ocp_qp_hpipm_terminate(void *config_, void *mem_, void *work_)
+{
+    return;
+}
+
+
 
 void ocp_qp_hpipm_config_initialize_default(void *config_)
 {
@@ -333,7 +464,10 @@ void ocp_qp_hpipm_config_initialize_default(void *config_)
     config->memory_get = &ocp_qp_hpipm_memory_get;
     config->workspace_calculate_size = &ocp_qp_hpipm_workspace_calculate_size;
     config->evaluate = &ocp_qp_hpipm;
+    config->solver_get = &ocp_qp_hpipm_solver_get;
+    config->memory_reset = &ocp_qp_hpipm_memory_reset;
     config->eval_sens = &ocp_qp_hpipm_eval_sens;
+    config->terminate = &ocp_qp_hpipm_terminate;
 
     return;
 }

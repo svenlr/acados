@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -45,6 +42,7 @@
 #include "blasfeo/include/blasfeo_i_aux_ext_dep.h"
 
 #include "acados/utils/print.h"
+#include "acados/utils/mem.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -472,7 +470,10 @@ acados_size_t butcher_tableau_work_calculate_size(int ns)
 
     acados_size_t size_legendre = gauss_legendre_nodes_work_calculate_size(ns);
 
-    return size > size_legendre ? size : size_legendre;
+    size = size > size_legendre ? size : size_legendre;
+    make_int_multiple_of(8, &size);
+
+    return size;
 }
 
 
@@ -539,17 +540,109 @@ void calculate_butcher_tableau(int ns, sim_collocation_type collocation_type, do
     switch (collocation_type)
     {
         case GAUSS_LEGENDRE:
-            // gauss legendre
             gauss_legendre_nodes(ns, c_vec, work);
+            calculate_butcher_tableau_from_nodes(ns, c_vec, b_vec, A_mat, work);
             break;
         case GAUSS_RADAU_IIA:
             gauss_radau_iia_nodes(ns, c_vec, work);
+            calculate_butcher_tableau_from_nodes(ns, c_vec, b_vec, A_mat, work);
+            break;
+        case EXPLICIT_RUNGE_KUTTA:
+            get_explicit_butcher_tableau(ns, A_mat, b_vec, c_vec);
             break;
         default:
-            printf("\nerror: calculate_butcher_tableau: unsupported collocation_typre\n");
+            printf("\nerror: calculate_butcher_tableau: unsupported collocation_type\n");
             exit(1);
     }
+}
 
-    // butcher tableau
-    calculate_butcher_tableau_from_nodes(ns, c_vec, b_vec, A_mat, work);
+
+void get_explicit_butcher_tableau(int ns, double *A, double *b, double *c)
+{
+    switch (ns)
+    {
+        case 1:
+        {
+            // A
+            A[0 + ns * 0] = 0.0;
+            // b
+            b[0] = 1.0;
+            // c
+            c[0] = 0.0;
+            break;
+        }
+        case 2:
+        {
+            // A
+            A[0 + ns * 0] = 0.0;
+            A[0 + ns * 1] = 0.0;
+            A[1 + ns * 0] = 0.5;
+            A[1 + ns * 1] = 0.0;
+            // b
+            b[0] = 0.0;
+            b[1] = 1.0;
+            // c
+            c[0] = 0.0;
+            c[1] = 0.5;
+            break;
+        }
+        case 3:
+        {
+            //A
+            A[0 + ns * 0] = 0.0;
+            A[0 + ns * 1] = 0.0;
+            A[0 + ns * 2] = 0.0;
+            A[1 + ns * 0] = 0.5;
+            A[1 + ns * 1] = 0.0;
+            A[1 + ns * 2] = 0.0;
+            A[2 + ns * 0] = -1.0;
+            A[2 + ns * 1] = 2.0;
+            A[2 + ns * 2] = 0.0;
+            //b
+            b[0] = 1.0 / 6.0;
+            b[1] = 2.0 / 3.0;
+            b[2] = 1.0 / 6.0;
+            // c
+            c[0] = 0.0;
+            c[1] = 0.5;
+            c[2] = 1.0;
+            break;
+        }
+        case 4:
+        {
+            // A
+            A[0 + ns * 0] = 0.0;
+            A[0 + ns * 1] = 0.0;
+            A[0 + ns * 2] = 0.0;
+            A[0 + ns * 3] = 0.0;
+            A[1 + ns * 0] = 0.5;
+            A[1 + ns * 1] = 0.0;
+            A[1 + ns * 2] = 0.0;
+            A[1 + ns * 3] = 0.0;
+            A[2 + ns * 0] = 0.0;
+            A[2 + ns * 1] = 0.5;
+            A[2 + ns * 2] = 0.0;
+            A[2 + ns * 3] = 0.0;
+            A[3 + ns * 0] = 0.0;
+            A[3 + ns * 1] = 0.0;
+            A[3 + ns * 2] = 1.0;
+            A[3 + ns * 3] = 0.0;
+            // b
+            b[0] = 1.0 / 6.0;
+            b[1] = 1.0 / 3.0;
+            b[2] = 1.0 / 3.0;
+            b[3] = 1.0 / 6.0;
+            // c
+            c[0] = 0.0;
+            c[1] = 0.5;
+            c[2] = 0.5;
+            c[3] = 1.0;
+            break;
+        }
+        default:
+        {
+            printf("\n error: ERK: num_stages = %d not available. Only number of stages = {1,2,3,4} implemented!\n",ns);
+            exit(1);
+        }
+    }
 }

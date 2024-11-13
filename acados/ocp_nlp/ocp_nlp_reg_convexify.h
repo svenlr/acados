@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -78,7 +75,7 @@ void *ocp_nlp_reg_convexify_opts_assign(void *raw_memory);
 //
 void ocp_nlp_reg_convexify_opts_initialize_default(void *config_, ocp_nlp_reg_dims *dims, void *opts_);
 //
-void ocp_nlp_reg_convexify_opts_set(void *config_, ocp_nlp_reg_dims *dims, void *opts_, char *field, void* value);
+void ocp_nlp_reg_convexify_opts_set(void *config_, void *opts_, const char *field, void* value);
 
 
 
@@ -103,8 +100,8 @@ typedef struct {
     struct blasfeo_dmat *original_RSQrq;
     struct blasfeo_dmat tmp_RSQ;
 
-	struct blasfeo_dvec tmp_nuxM;
-	struct blasfeo_dvec tmp_nbgM;
+    struct blasfeo_dvec tmp_nuxM;
+    struct blasfeo_dvec tmp_nbgM;
 
 //    struct blasfeo_dvec grad;
 //    struct blasfeo_dvec b2;
@@ -118,7 +115,7 @@ typedef struct {
     struct blasfeo_dvec **ux;  // pointer to ux in qp_out
     struct blasfeo_dvec **pi;  // pointer to pi in qp_out
     struct blasfeo_dvec **lam;  // pointer to lam in qp_out
-	int **idxb; // pointer to idxb in qp_in
+    int **idxb; // pointer to idxb in qp_in
 
 } ocp_nlp_reg_convexify_memory;
 

@@ -1,8 +1,5 @@
 #
-# Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-# Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-# Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-# Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+# Copyright (c) The acados authors.
 #
 # This file is part of acados.
 #
@@ -32,7 +29,7 @@
 #
 
 
-if(NOT CMAKE_CXX_COMPILER_ID MATCHES "MSVC") # TODO: make this work on windodws?!
+if(NOT CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
 
 configure_file(chain_model/chain_model.h.in ${CMAKE_CURRENT_SOURCE_DIR}/chain_model/chain_model.h @ONLY)
 
@@ -69,11 +66,11 @@ file(GLOB CHAIN_MODEL_SRC
     # chain_model/casadi_erk4_chain_nm5.c
     # NOTE: chain_model/casadi_erk4_chain_nm5.c (and 6) commented, because compilation takes quite a while
     # 6 masses
-    chain_model/vde_chain_nm6.c
-    chain_model/vde_adj_chain_nm6.c
-    #chain_model/vde_hess_chain_nm6.c
-    chain_model/ls_cost_nm6.c
-    chain_model/ls_costN_nm6.c
+    # chain_model/vde_chain_nm6.c
+    # chain_model/vde_adj_chain_nm6.c
+    # chain_model/vde_hess_chain_nm6.c
+    # chain_model/ls_cost_nm6.c
+    # chain_model/ls_costN_nm6.c
     # chain_model/casadi_erk4_chain_nm6.c
 
     # external cost
@@ -109,11 +106,11 @@ file(GLOB CHAIN_MODEL_SRC
     implicit_chain_model/impl_ode_jac_x_xdot_u_chain_nm5.c
     implicit_chain_model/impl_ode_jac_x_u_chain_nm5.c
     # 6 masses
-    implicit_chain_model/impl_ode_fun_chain_nm6.c
-    implicit_chain_model/impl_ode_fun_jac_x_xdot_chain_nm6.c
-    implicit_chain_model/impl_ode_fun_jac_x_xdot_u_chain_nm6.c
-    implicit_chain_model/impl_ode_jac_x_xdot_u_chain_nm6.c
-    implicit_chain_model/impl_ode_jac_x_u_chain_nm6.c
+    # implicit_chain_model/impl_ode_fun_chain_nm6.c
+    # implicit_chain_model/impl_ode_fun_jac_x_xdot_chain_nm6.c
+    # implicit_chain_model/impl_ode_fun_jac_x_xdot_u_chain_nm6.c
+    # implicit_chain_model/impl_ode_jac_x_xdot_u_chain_nm6.c
+    # implicit_chain_model/impl_ode_jac_x_u_chain_nm6.c
 
 )
 
@@ -283,5 +280,11 @@ add_test(ocp_qp ocp_qp)
 add_executable(dense_qp dense_qp.c)
 target_link_libraries(dense_qp acados)
 add_test(dense_qp dense_qp)
+
+# regularization
+add_executable(regularization regularization.c)
+target_link_libraries(regularization acados)
+add_test(regularization regularization)
+
 
 endif()

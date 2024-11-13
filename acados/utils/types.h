@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -59,8 +56,7 @@ extern "C" {
 
 #define MAX_STR_LEN 256
 #define ACADOS_EPS 1e-12
-#define ACADOS_NEG_INFTY -1.0e9
-#define ACADOS_POS_INFTY +1.0e9
+#define ACADOS_INFTY 1e10
 #define UNUSED(x) ((void)(x))
 
 
@@ -78,12 +74,36 @@ typedef int (*casadi_function_t)(const double** arg, double** res, int* iw, doub
 enum return_values
 {
     ACADOS_SUCCESS,
-    ACADOS_FAILURE,
+    ACADOS_NAN_DETECTED,
     ACADOS_MAXITER,
     ACADOS_MINSTEP,
     ACADOS_QP_FAILURE,
     ACADOS_READY,
+    ACADOS_UNBOUNDED,
+    ACADOS_TIMEOUT,
 };
+
+
+/// Types of the cost function.
+typedef enum
+{
+    LINEAR_LS,
+    NONLINEAR_LS,
+    CONVEX_OVER_NONLINEAR,
+    EXTERNAL,
+    INVALID_COST,
+} ocp_nlp_cost_t;
+
+
+/// Types of the timeout heuristic.
+typedef enum
+{
+  MAX_CALL,
+  MAX_OVERALL,
+  LAST,
+  AVERAGE,
+  ZERO,
+} ocp_nlp_timeout_heuristic_t;
 
 
 

@@ -1,8 +1,5 @@
 #
-# Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
-# Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
-# Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
-# Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+# Copyright (c) The acados authors.
 #
 # This file is part of acados.
 #
@@ -32,10 +29,12 @@
 #
 
 import sys
-sys.path.insert(0, '../getting_started/common')
+sys.path.insert(0, '../pendulum_on_cart/common')
 
 from acados_template import *
 from pendulum_model import export_pendulum_ode_model
+from casadi import vertcat
+import json
 import numpy as np
 import scipy.linalg
 import argparse
@@ -152,14 +151,14 @@ model = export_pendulum_ode_model()
 ocp.model = model
 
 Tf = 1.0
-nx = model.x.size()[0]
-nu = model.u.size()[0]
+nx = model.x.rows()
+nu = model.u.rows()
 ny = nx + nu
 ny_e = nx
 N = 20
 
 # set dimensions
-ocp.dims.N = N
+ocp.solver_options.N_horizon = N
 
 # set cost
 Q = 2*np.diag([1e3, 1e3, 1e-2, 1e-2])
@@ -221,7 +220,6 @@ else:
 
 # set constraints
 Fmax = 80
-ocp.constraints.constr_type = 'BGH'
 ocp.constraints.lbu = np.array([-Fmax])
 ocp.constraints.ubu = np.array([+Fmax])
 ocp.constraints.x0 = np.array([0.0, np.pi, 0.0, 0.0])
@@ -251,12 +249,14 @@ ocp.solver_options.nlp_solver_max_iter = 200
 ocp.solver_options.qp_solver_iter_max = 50
 ocp.solver_options.print_level = 0
 
+ocp.solver_options.ext_fun_compile_flags = ''
+
 # set prediction horizon
 ocp.solver_options.tf = Tf
 ocp.solver_options.nlp_solver_type = SOLVER_TYPE
 
 if ocp.solver_options.integrator_type == 'GNSF':
-    with open('../getting_started/common/' + model.name + '_gnsf_functions.json', 'r') as f:
+    with open('../pendulum_on_cart/common/' + model.name + '_gnsf_functions.json', 'r') as f:
         gnsf_dict = json.load(f)
     ocp.gnsf_model = gnsf_dict
 
@@ -264,7 +264,7 @@ ocp_solver = AcadosOcpSolver(ocp, json_file = 'acados_ocp.json')
 
 # initialize solver
 x_traj_init = np.transpose( np.vstack( [np.zeros((N+1,)), \
-     np.arange(pi, -pi/N,- pi/N), np.zeros((N+1,)), np.zeros((N+1,))]) )
+     np.arange(np.pi, -np.pi/N,- np.pi/N), np.zeros((N+1,)), np.zeros((N+1,))]) )
 for i in range(N+1):
     ocp_solver.set(i, "x", x_traj_init[i])
 
@@ -277,8 +277,8 @@ for i in range(N):
     ocp_solver.set(i, "u", u_init[i])
 
 # solve ocp
-simX = np.ndarray((N+1, nx))
-simU = np.ndarray((N, nu))
+simX = np.zeros((N+1, nx))
+simU = np.zeros((N, nu))
 
 status = ocp_solver.solve()
 
@@ -286,7 +286,7 @@ ocp_solver.print_statistics()
 
 if status != 0:
     # import pdb; pdb.set_trace()
-    raise Exception('acados returned status {}. Exiting.'.format(status))
+    raise Exception(f'acados returned status {status}.')
 
 sqp_iter = ocp_solver.get_stats('sqp_iter')
 if SOLVER_TYPE in {'SQP'}:

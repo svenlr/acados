@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -75,7 +72,7 @@ void ocp_nlp_reg_noreg_opts_initialize_default(void *config_, ocp_nlp_reg_dims *
 
 
 
-void ocp_nlp_reg_noreg_opts_set(void *config_, ocp_nlp_reg_dims *dims, void *opts_, char *field, void* value)
+void ocp_nlp_reg_noreg_opts_set(void *config_, void *opts_, const char *field, void* value)
 {
 
     printf("\nerror: field %s not available in ocp_nlp_reg_noreg_opts_set\n", field);
@@ -183,11 +180,22 @@ void ocp_nlp_reg_noreg_memory_set(void *config_, ocp_nlp_reg_dims *dims, void *m
  * functions
  ************************************************/
 
-void ocp_nlp_reg_noreg_regularize_hessian(void *config, ocp_nlp_reg_dims *dims, void *opts_, void *mem_)
+void ocp_nlp_reg_noreg_regularize(void *config, ocp_nlp_reg_dims *dims, void *opts_, void *mem_)
 {
     return;
 }
 
+
+void ocp_nlp_reg_noreg_regularize_lhs(void *config, ocp_nlp_reg_dims *dims, void *opts_, void *mem_)
+{
+    return;
+}
+
+
+void ocp_nlp_reg_noreg_regularize_rhs(void *config, ocp_nlp_reg_dims *dims, void *opts_, void *mem_)
+{
+    return;
+}
 
 void ocp_nlp_reg_noreg_correct_dual_sol(void *config, ocp_nlp_reg_dims *dims, void *opts_, void *mem_)
 {
@@ -221,7 +229,9 @@ void ocp_nlp_reg_noreg_config_initialize_default(ocp_nlp_reg_config *config)
     config->memory_set_pi_ptr = &ocp_nlp_reg_noreg_memory_set_pi_ptr;
     config->memory_set_lam_ptr = &ocp_nlp_reg_noreg_memory_set_lam_ptr;
     // functions
-    config->regularize_hessian = &ocp_nlp_reg_noreg_regularize_hessian;
+    config->regularize = &ocp_nlp_reg_noreg_regularize;
+    config->regularize_lhs = &ocp_nlp_reg_noreg_regularize_lhs;
+    config->regularize_rhs = &ocp_nlp_reg_noreg_regularize_rhs;
     config->correct_dual_sol = &ocp_nlp_reg_noreg_correct_dual_sol;
 }
 

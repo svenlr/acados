@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -92,12 +89,13 @@ acados_size_t sim_in_calculate_size(void *config_, void *dims)
     size += nx * sizeof(double);              // x
     size += nu * sizeof(double);              // u
     size += nx * (nx + nu) * sizeof(double);  // S_forw (max dimension)
+    // TODO: S_adj of sim_in is adjoint seed and should be just nx!
     size += (nx + nu) * sizeof(double);       // S_adj
 
     size += config->model_calculate_size(config, dims);
 
     make_int_multiple_of(8, &size);
-    size += 1 * 8;
+    size += 2 * 8;
 
     return size;
 }
@@ -110,36 +108,77 @@ sim_in *sim_in_assign(void *config_, void *dims, void *raw_memory)
 
     char *c_ptr = (char *) raw_memory;
 
+    // assign structure itself
     sim_in *in = (sim_in *) c_ptr;
     c_ptr += sizeof(sim_in);
 
-    in->dims = dims;
+    // align
+    align_char_to(8, &c_ptr);
 
+    // assign substructures
+    in->model = config->model_assign(config, dims, c_ptr);
+    c_ptr += config->model_calculate_size(config, dims);
+
+    // set pointers and dimensions, defaults
+    in->dims = dims;
     int nx, nu, nz;
     config->dims_get(config_, dims, "nx", &nx);
     config->dims_get(config_, dims, "nu", &nu);
     config->dims_get(config_, dims, "nz", &nz);
-
     int NF = nx + nu;
+    in->identity_seed = false;
+    in->t0 = 0.0;
 
+    // align
     align_char_to(8, &c_ptr);
 
+    // assign doubles
     assign_and_advance_double(nx, &in->x, &c_ptr);
     assign_and_advance_double(nu, &in->u, &c_ptr);
-
     assign_and_advance_double(nx * NF, &in->S_forw, &c_ptr);
     assign_and_advance_double(NF, &in->S_adj, &c_ptr);
-
-    in->identity_seed = false;
-
-    in->model = config->model_assign(config, dims, c_ptr);
-    c_ptr += config->model_calculate_size(config, dims);
 
     assert((char *) raw_memory + sim_in_calculate_size(config_, dims) >= c_ptr);
 
     return in;
 }
 
+
+void sim_in_assign_and_advance(void *config_, void *dims, sim_in **sim_in_p, char **c_ptr)
+{
+    sim_config *config = config_;
+
+    // assign structure itself
+    *sim_in_p = (sim_in *) *c_ptr;
+    *c_ptr += sizeof(sim_in);
+    // shorthand
+    sim_in *in = (sim_in *) *sim_in_p;
+
+    // align
+    align_char_to(8, &*c_ptr);
+
+    // assign substructures
+    in->model = config->model_assign(config, dims, *c_ptr);
+    *c_ptr += config->model_calculate_size(config, dims);
+
+    // set pointers and dimensions, defaults
+    in->dims = dims;
+    int nx, nu, nz;
+    config->dims_get(config_, dims, "nx", &nx);
+    config->dims_get(config_, dims, "nu", &nu);
+    config->dims_get(config_, dims, "nz", &nz);
+    int NF = nx + nu;
+    in->identity_seed = false;
+
+    // align
+    align_char_to(8, c_ptr);
+
+    // assign doubles
+    assign_and_advance_double(nx, &in->x, c_ptr);
+    assign_and_advance_double(nu, &in->u, c_ptr);
+    assign_and_advance_double(nx * NF, &in->S_forw, c_ptr);
+    assign_and_advance_double(NF, &in->S_adj, c_ptr);
+}
 
 
 int sim_in_set_(void *config_, void *dims_, sim_in *in, const char *field, void *value)
@@ -152,6 +191,11 @@ int sim_in_set_(void *config_, void *dims_, sim_in *in, const char *field, void 
     {
         double *T = value;
         in->T = T[0];
+    }
+    else if (!strcmp(field, "t0"))
+    {
+        double *t0 = value;
+        in->t0 = t0[0];
     }
     else if (!strcmp(field, "x"))
     {
@@ -198,20 +242,10 @@ int sim_in_set_(void *config_, void *dims_, sim_in *in, const char *field, void 
         for (int ii=0; ii < nx*(nu+nx); ii++)
             in->S_forw[ii] = S_forw[ii];
     }
-    else if (!strcmp(field, "S_adj"))
-    {
-        // NOTE: this assumes nf = nu+nx !!!
-        int nx, nu;
-        config->dims_get(config_, dims_, "nx", &nx);
-        config->dims_get(config_, dims_, "nu", &nu);
-        double *S_adj = value;
-        for (int ii=0; ii < nx+nu; ii++)
-            in->S_adj[ii] = S_adj[ii];
-    }
     else if (!strcmp(field, "seed_adj"))
     {
         // NOTE: this assumes nf = nu+nx !!!
-        // NOTE: this correctly initialized the u-part to 0, unless the above S_adj which copies it from outside
+        // NOTE: this correctly initialized the u-part to 0, in contrast to the above S_adj which copies it from outside
         int nx, nu;
         config->dims_get(config_, dims_, "nx", &nx);
         config->dims_get(config_, dims_, "nu", &nu);
@@ -444,6 +478,11 @@ void sim_opts_set_(sim_opts *opts, const char *field, void *value)
         bool *jac_reuse = (bool *) value;
         opts->jac_reuse = *jac_reuse;
     }
+    else if (!strcmp(field, "cost_computation"))
+    {
+        bool *cost_computation = (bool *) value;
+        opts->cost_computation = *cost_computation;
+    }
     else if (!strcmp(field, "sens_forw"))
     {
         bool *sens_forw = (bool *) value;
@@ -479,9 +518,19 @@ void sim_opts_set_(sim_opts *opts, const char *field, void *value)
         sim_collocation_type *collocation_type = (sim_collocation_type *) value;
         opts->collocation_type = *collocation_type;
     }
+    else if (!strcmp(field, "cost_type"))
+    {
+        ocp_nlp_cost_t *cost_type = (ocp_nlp_cost_t *) value;
+        opts->cost_type = *cost_type;
+    }
+    else if (!strcmp(field, "newton_tol"))
+    {
+        double *newton_tol = value;
+        opts->newton_tol = *newton_tol;
+    }
     else
     {
-        printf("\nerror: field %s not available in sim_opts_set\n", field);
+        printf("\nerror: field %s not available in sim_opts_set_\n", field);
         exit(1);
     }
 
@@ -507,9 +556,14 @@ void sim_opts_get_(sim_config *config, sim_opts *opts, const char *field, void *
         bool *sens_hess = value;
         *sens_hess = opts->sens_hess;
     }
+    else if (!strcmp(field, "cost_computation"))
+    {
+        int *int_ptr = value;
+        *int_ptr = opts->cost_computation;
+    }
     else
     {
-        printf("sim_opts_get: field %s not supported \n", field);
+        printf("sim_opts_get_: field %s not supported \n", field);
         exit(1);
     }
 

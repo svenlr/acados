@@ -1,8 +1,5 @@
 /*
- * Copyright 2019 Gianluca Frison, Dimitris Kouzoupis, Robin Verschueren,
- * Andrea Zanelli, Niels van Duijkeren, Jonathan Frey, Tommaso Sartor,
- * Branimir Novoselnik, Rien Quirynen, Rezart Qelibari, Dang Doan,
- * Jonas Koenemann, Yutao Chen, Tobias Schöls, Jonas Schlagenhauf, Moritz Diehl
+ * Copyright (c) The acados authors.
  *
  * This file is part of acados.
  *
@@ -33,8 +30,8 @@
 
 
 ///
-/// \defgroup ocp_nlp_cost ocp_nlp_cost 
-/// 
+/// \defgroup ocp_nlp_cost ocp_nlp_cost
+///
 
 /// \addtogroup ocp_nlp_cost ocp_nlp_cost
 /// @{
@@ -62,7 +59,6 @@ typedef struct
 {
     acados_size_t (*dims_calculate_size)(void *config);
     void *(*dims_assign)(void *config, void *raw_memory);
-    void (*dims_initialize)(void *config, void *dims, int nx, int nu, int ny, int ns, int nz);
     void (*dims_set)(void *config_, void *dims_, const char *field, int *value);
     void (*dims_get)(void *config_, void *dims_, const char *field, int *value);
     acados_size_t (*model_calculate_size)(void *config, void *dims);
@@ -74,23 +70,36 @@ typedef struct
     void (*opts_update)(void *config, void *dims, void *opts);
     void (*opts_set)(void *config, void *opts, const char *field, void *value);
     acados_size_t (*memory_calculate_size)(void *config, void *dims, void *opts);
-	double *(*memory_get_fun_ptr)(void *memory);
+    double *(*memory_get_fun_ptr)(void *memory);
     struct blasfeo_dvec *(*memory_get_grad_ptr)(void *memory);
+    struct blasfeo_dvec *(*model_get_y_ref_ptr)(void *memory);
+    struct blasfeo_dmat *(*memory_get_W_chol_ptr)(void *memory_);
+    struct blasfeo_dvec *(*memory_get_W_chol_diag_ptr)(void *memory_);
+    double *(*get_outer_hess_is_diag_ptr)(void *memory_, void *model_);
     void (*memory_set_ux_ptr)(struct blasfeo_dvec *ux, void *memory);
-    void (*memory_set_tmp_ux_ptr)(struct blasfeo_dvec *tmp_ux, void *memory);
     void (*memory_set_z_alg_ptr)(struct blasfeo_dvec *z_alg, void *memory);
     void (*memory_set_dzdux_tran_ptr)(struct blasfeo_dmat *dzdux, void *memory);
     void (*memory_set_RSQrq_ptr)(struct blasfeo_dmat *RSQrq, void *memory);
     void (*memory_set_Z_ptr)(struct blasfeo_dvec *Z, void *memory);
+    void (*memory_set_jac_lag_stat_p_global_ptr)(struct blasfeo_dmat *jac_lag_stat_p_global, void *memory);
     void *(*memory_assign)(void *config, void *dims, void *opts, void *raw_memory);
     acados_size_t (*workspace_calculate_size)(void *config, void *dims, void *opts);
+    acados_size_t (*get_external_fun_workspace_requirement)(void *config, void *dims, void *opts_, void *in);
+    void (*set_external_fun_workspaces)(void *config, void *dims, void *opts_, void *in, void *work_);
     void (*initialize)(void *config_, void *dims, void *model_, void *opts_, void *mem_, void *work_);
 
     // computes the function value, gradient and hessian (approximation) of the cost function
     void (*update_qp_matrices)(void *config_, void *dims, void *model_, void *opts_, void *mem_, void *work_);
     // computes the cost function value (intended for globalization)
     void (*compute_fun)(void *config_, void *dims, void *model_, void *opts_, void *mem_, void *work_);
-    void (*config_initialize_default)(void *config);
+    // computes the cost jacobian wrt parameters (intended for solution sensitivities)
+    void (*compute_jac_p)(void *config_, void *dims, void *model_, void *opts_, void *mem_, void *work_);
+    void (*eval_grad_p)(void *config_, void *dim, void* model, void *opts, void *mem, void *work, struct blasfeo_dvec *out);
+    void (*compute_gradient)(void *config_, void *dims, void *model_, void *opts_, void *mem_, void *work_);
+    void (*config_initialize_default)(void *config, int stage);
+    void (*precompute)(void *config_, void *dims_, void *model_, void *opts_, void *memory_, void *work_);
+    // stage information
+    int stage;
 } ocp_nlp_cost_config;
 
 //
@@ -105,5 +114,5 @@ ocp_nlp_cost_config *ocp_nlp_cost_config_assign(void *raw_memory);
 #endif
 
 #endif  // ACADOS_OCP_NLP_OCP_NLP_COST_COMMON_H_
-/// @} 
-/// @} 
+/// @}
+/// @}
